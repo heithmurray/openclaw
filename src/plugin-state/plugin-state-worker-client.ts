@@ -5,7 +5,10 @@ import type {
   SessionEntriesCurrentCheck,
 } from "../config/sessions/session-entry-current.types.js";
 import { assertStateDatabaseReadAllowed } from "../infra/gateway-state-owner.js";
-import { hasSqliteDatabaseSchemaAdmissionForIdentity } from "../infra/sqlite-database-admission.js";
+import {
+  hasSqliteDatabaseSchemaAdmissionForIdentity,
+  readSqliteDatabaseWriteRevisionForIdentity,
+} from "../infra/sqlite-database-admission.js";
 import type { SqliteWorkerStore } from "../infra/sqlite-worker-contract.js";
 import type {
   SqliteWorkerAdmissionFactory,
@@ -161,6 +164,7 @@ async function execute<Key extends keyof PluginStateWorkerOperations>(
         typedCommand.type === "pluginState.entries")
     ) {
       const identity = context.admission.identity.key;
+      const writeRevision = readSqliteDatabaseWriteRevisionForIdentity(context.admission.identity);
       const keys =
         typedCommand.type === "pluginState.entries"
           ? []
@@ -172,7 +176,7 @@ async function execute<Key extends keyof PluginStateWorkerOperations>(
           ? readPluginStateEntriesCache(identity, typedCommand.input)
           : undefined;
       const cached = keys.map((key) =>
-        readPluginStateObservationCache(identity, { ...typedCommand.input, key }),
+        readPluginStateObservationCache(identity, { ...typedCommand.input, key }, writeRevision),
       );
       if (
         cached.every((entry) => entry !== undefined) &&
@@ -231,7 +235,11 @@ async function execute<Key extends keyof PluginStateWorkerOperations>(
         operationStarted = false;
       }
       if (typedCommand.type === "pluginState.observe") {
-        installObservation = preparePluginStateObservationCacheRead(identity, typedCommand.input);
+        installObservation = preparePluginStateObservationCacheRead(
+          identity,
+          typedCommand.input,
+          writeRevision,
+        );
       } else if (typedCommand.type === "pluginState.entries") {
         installEntries = preparePluginStateEntriesCacheRead(identity, typedCommand.input);
       }

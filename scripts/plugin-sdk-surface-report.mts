@@ -255,7 +255,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: deprecated createSessionHeaderLink retained from shipped 2026.10.1.
       // +2: readRuntimeConfig and captureRuntimeConfigAsyncReader on runtime-config-snapshot.
       // +10: shared database-engine contracts and operations after the SQLite export cutover.
-      3712,
+      // -9: retired heartbeat reply and harness exports.
+      3703,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -284,7 +285,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: the same deprecated createSessionHeaderLink.
       // +2: the same prepared runtime reader and asynchronous config preparation functions.
       // +5: shared database-engine host and worker operations.
-      2167,
+      // -4: retired heartbeat reply and harness functions.
+      2163,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(

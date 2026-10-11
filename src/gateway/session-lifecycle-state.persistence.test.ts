@@ -524,7 +524,6 @@ it.each(["success", "failed-write"])(
       releaseWriter.resolve();
       await heldWriter;
       await subscriptions?.agentUnsub();
-      subscriptions?.heartbeatUnsub();
       subscriptions?.transcriptUnsub();
       subscriptions?.lifecycleUnsub();
       getSessionRowProjection(context)?.dispose();
@@ -676,7 +675,6 @@ it.for([
         releaseWriter.resolve();
         await heldWriter;
         await subscriptions?.agentUnsub();
-        subscriptions?.heartbeatUnsub();
         subscriptions?.transcriptUnsub();
         subscriptions?.lifecycleUnsub();
         releaseAgentRunContext(runId, claimId);

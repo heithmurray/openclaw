@@ -75,7 +75,7 @@ it.for(["complete", "cancel", "lost-result"] as const)(
         defaultAgentId: "main",
         log: logger,
         enqueueSystemEvent() {},
-        requestHeartbeat() {},
+        enqueueSessionEvent() {},
         runIsolatedAgentJob: async () => ({ status: "ok" }),
         runCommandJob,
       });
@@ -161,7 +161,7 @@ it("keeps owned running work out of recovery and queue database polling", async 
     defaultAgentId: "main",
     log: logger,
     enqueueSystemEvent() {},
-    requestHeartbeat() {},
+    enqueueSessionEvent() {},
     runIsolatedAgentJob: async () => ({ status: "ok" }),
     runCommandJob: async () => {
       entered.resolve();
@@ -225,7 +225,7 @@ it("joins a running job before restarting after scheduler cleanup fails", async 
     defaultAgentId: "main",
     log: logger,
     enqueueSystemEvent() {},
-    requestHeartbeat() {},
+    enqueueSessionEvent() {},
     runIsolatedAgentJob: async () => ({ status: "ok" }),
     runCommandJob,
   });
@@ -282,7 +282,7 @@ it("force-runs a disabled job while scheduling is paused without consuming its p
     defaultAgentId: "main",
     log: logger,
     enqueueSystemEvent() {},
-    requestHeartbeat() {},
+    enqueueSessionEvent() {},
     runIsolatedAgentJob: async () => ({ status: "ok" }),
     runCommandJob,
   });
@@ -366,7 +366,7 @@ it("shares capacity across sibling services for timer, manual, stream, and consu
       defaultAgentId: "main",
       log: logger,
       enqueueSystemEvent() {},
-      requestHeartbeat() {},
+      enqueueSessionEvent() {},
       runCommandJob,
       runIsolatedAgentJob,
     });
@@ -528,7 +528,7 @@ it("retires a stale markerless receipt at startup so the job can run again", asy
     defaultAgentId: "main",
     log: logger,
     enqueueSystemEvent() {},
-    requestHeartbeat() {},
+    enqueueSessionEvent() {},
     runIsolatedAgentJob: async () => ({ status: "ok" }),
     runCommandJob,
   });

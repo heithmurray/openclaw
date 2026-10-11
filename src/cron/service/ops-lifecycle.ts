@@ -1,9 +1,56 @@
+import { runInDetachedAsyncContext } from "../../shared/detached-async-context.js";
+import { subscribeCronJobsStoreMutations } from "../store.js";
 import { locked } from "./locked.js";
 import { stopCronRunQueue, drainCronRunQueue, waitForCronRunQueue } from "./run-queue.js";
 import { recoverCronRuns } from "./run-recovery.js";
 import { refreshCronScheduler, startCronScheduler, stopCronScheduler } from "./scheduler-actor.js";
-import type { CronServiceState } from "./state.js";
+import { emit, type CronServiceState } from "./state.js";
 import { ensureLoaded } from "./store.js";
+
+const mutationSubscriptions = new WeakMap<CronServiceState, () => void>();
+
+/** Adopt published rows; the worker alone recomputes schedules after this lock releases. */
+export async function reloadProvisionedCronJobs(
+  state: CronServiceState,
+  generation = state.lifecycleGeneration,
+): Promise<void> {
+  if (state.stopped || state.lifecycleGeneration !== generation || !state.schedulerStarted) {
+    return;
+  }
+  const previousIds = new Set(state.store?.jobs.map((job) => job.id));
+  await ensureLoaded(state, { forceReload: true });
+  if (state.stopped || state.lifecycleGeneration !== generation) {
+    return;
+  }
+  refreshCronScheduler(state);
+  for (const job of state.store?.jobs ?? []) {
+    if (!previousIds.has(job.id)) {
+      emit(state, { jobId: job.id, action: "added", job, nextRunAtMs: job.state.nextRunAtMs });
+    }
+  }
+}
+
+function subscribeStoreMutations(state: CronServiceState): void {
+  mutationSubscriptions.get(state)?.();
+  const generation = state.lifecycleGeneration;
+  mutationSubscriptions.set(
+    state,
+    subscribeCronJobsStoreMutations(state.deps.storePath, () => {
+      const refresh = async () => {
+        await locked(state, () => reloadProvisionedCronJobs(state, generation));
+        if (!state.stopped && state.lifecycleGeneration === generation && state.schedulerStarted) {
+          await state.deps.onProvisionedJobsReloaded?.();
+        }
+      };
+      const work = runInDetachedAsyncContext(() =>
+        state.deps.runSchedulerOwned ? state.deps.runSchedulerOwned(refresh) : refresh(),
+      ).catch((error: unknown) => {
+        state.deps.log.warn({ err: String(error) }, "cron: failed to adopt provisioned jobs");
+      });
+      state.schedulerDrain = Promise.all([state.schedulerDrain, work]).then(() => undefined);
+    }),
+  );
+}
 
 /** Recover committed state before the worker starts dispatching new requests. */
 export async function start(state: CronServiceState): Promise<void> {
@@ -31,6 +78,15 @@ export async function start(state: CronServiceState): Promise<void> {
     await stopCronScheduler(state);
     return;
   }
+  subscribeStoreMutations(state);
+  await locked(state, () => reloadProvisionedCronJobs(state, generation));
+  if (state.stopped || state.lifecycleGeneration !== generation) {
+    return;
+  }
+  await state.deps.onProvisionedJobsReloaded?.();
+  if (state.stopped || state.lifecycleGeneration !== generation) {
+    return;
+  }
   state.deps.log.info(
     { enabled: state.deps.cronEnabled, jobs: state.store?.jobs.length ?? 0 },
     "cron: started",
@@ -39,8 +95,12 @@ export async function start(state: CronServiceState): Promise<void> {
 
 /** Close dispatch synchronously, then join execution and the retained worker lease. */
 export function stop(state: CronServiceState) {
-  state.lifecycleGeneration += 1;
+  if (!state.stopped) {
+    state.lifecycleGeneration += 1;
+  }
   state.stopped = true;
+  mutationSubscriptions.get(state)?.();
+  mutationSubscriptions.delete(state);
   state.schedulerStarted = false;
   state.schedulerDrain = Promise.allSettled([
     state.schedulerDrain,

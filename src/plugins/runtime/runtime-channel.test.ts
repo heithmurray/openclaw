@@ -28,7 +28,7 @@ describe("inbound dispatch", () => {
     }));
     const channel = createRuntimeChannel({ dispatchReplyFromConfig: dispatch });
     const replyOptions = {
-      isHeartbeat: true,
+      disableBlockStreaming: true,
       internalEventExecution: { assertCurrent: callback, onStarted: callback },
       onReplyOperationOwned: callback,
     };
@@ -39,7 +39,7 @@ describe("inbound dispatch", () => {
       replyOptions,
     });
     expect(dispatch).toHaveBeenCalledWith(
-      expect.objectContaining({ replyOptions: { isHeartbeat: true } }),
+      expect.objectContaining({ replyOptions: { disableBlockStreaming: true } }),
     );
     expect(replyOptions.onReplyOperationOwned).toBe(callback);
   });
@@ -55,7 +55,7 @@ describe("inbound dispatch", () => {
       const channel = createRuntimeChannel({ dispatchReplyFromConfig: boundReplyDispatch });
       expect(channel.turn).toBe(channel.inbound);
       const replyOptions = {
-        isHeartbeat: true,
+        disableBlockStreaming: true,
         internalEventExecution: { onStarted: vi.fn() },
         onReplyOperationOwned: vi.fn(),
       };
@@ -74,7 +74,7 @@ describe("inbound dispatch", () => {
       expect(dispatchRoutedChannelTurn).toHaveBeenCalledWith({
         ...turn,
         dispatchReplyFromConfig: boundReplyDispatch ?? callerDispatch,
-        replyOptions: { isHeartbeat: true },
+        replyOptions: { disableBlockStreaming: true },
       });
     },
   );

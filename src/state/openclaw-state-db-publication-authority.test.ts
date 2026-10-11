@@ -181,6 +181,7 @@ describe("GitHub publication requester authority schema migration", () => {
       expect(detectOpenClawStateDatabaseSchemaMigrations(options)).toEqual([
         { kind: "github-publication-requester-authority-v18", path: databasePath },
         { kind: "predicate-columns-v21", path: databasePath },
+        { kind: "automation-policy-fence-v22", path: databasePath },
       ]);
       if (via === "doctor repair") {
         expect(repairOpenClawStateDatabaseSchema(options)).toEqual({
