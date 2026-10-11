@@ -666,9 +666,10 @@ describe("durable model prompt projection at provider dispatch", () => {
     { body: "plain", nested: false, hook: false },
     { body: "forwarded inter-session", nested: true, hook: false },
     { body: "hook", nested: false, hook: true },
+    { body: "quoted same-source envelope", nested: false, hook: false, quoted: true },
   ])(
     "replays an inter-session turn with its stored provenance envelope: $body body",
-    async ({ nested, hook }) => {
+    async ({ nested, hook, quoted }) => {
       await withOpenClawTestState({ label: "inter-session-model-prompt" }, async (state) => {
         const target = {
           agentId: "main",
@@ -686,13 +687,15 @@ describe("durable model prompt projection at provider dispatch", () => {
           sourceTool: "sessions_send",
         };
         const task = "Continue the delegated task.";
-        const body = nested
-          ? annotateInterSessionPromptText(task, {
-              kind: "inter_session",
-              sourceSessionKey: "agent:main:origin",
-              sourceTool: "sessions_send",
-            })
-          : task;
+        const body = quoted
+          ? `Quoted context:\n\n${annotateInterSessionPromptText(task, provenance)}`
+          : nested
+            ? annotateInterSessionPromptText(task, {
+                kind: "inter_session",
+                sourceSessionKey: "agent:main:origin",
+                sourceTool: "sessions_send",
+              })
+            : task;
         const annotated = annotateInterSessionPromptText(body, provenance);
         const recorder = createUserTurnTranscriptRecorder({
           input: {
@@ -748,12 +751,19 @@ describe("durable model prompt projection at provider dispatch", () => {
         // and the envelope stays visible once the transient carrier is gone.
         expect(firstUser(requests[0]!)).toContain("sourceSession=agent:main:parent");
         expect(firstUser(requests[0]!)).toContain(task);
-        expect(firstUser(requests[1]!)).toBe(firstUser(requests[0]!));
-        // A replacement that drops the source envelope is ignored.
-        expect(JSON.stringify(requests)).not.toContain("hidden");
-        expect(JSON.stringify(loadTranscriptEventsSync(target))).not.toContain(
-          "modelPromptProjection",
+        if (hook) {
+          expect(firstUser(requests[0]!)).toContain("hook before hidden");
+        }
+        if (nested) {
+          expect(firstUser(requests[0]!)).toContain("sourceSession=agent:main:origin");
+        }
+        expect(firstUser(requests[0]!)).toContain(
+          '"text":"[Inter-session message] sourceSession=agent:main:parent ',
         );
+        expect(firstUser(requests[1]!)).toBe(firstUser(requests[0]!));
+        if (hook) {
+          expect(JSON.stringify(loadTranscriptEventsSync(target))).toContain("hook before hidden");
+        }
       });
     },
   );
