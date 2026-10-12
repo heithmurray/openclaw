@@ -174,7 +174,6 @@ describe("session key canonicalization", () => {
   });
 });
 
-
 describe("resolveEventSessionKey", () => {
   it("preserves durable cron base session keys", () => {
     expect(resolveEventSessionKey("agent:ops:cron:job-1")).toBe("agent:ops:cron:job-1");

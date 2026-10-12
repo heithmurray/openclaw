@@ -1994,7 +1994,6 @@ describe("gateway hot reload model state", () => {
     },
   );
 
-
   it.each(["start", "stop"] as const)(
     "restarts instead of rolling back when cron %s fails after commit",
     async (phase) => {
