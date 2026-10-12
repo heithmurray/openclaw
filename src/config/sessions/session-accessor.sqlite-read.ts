@@ -175,13 +175,18 @@ export function readTranscriptExportSnapshotReadOnlySync(
         database.db,
         () => {
           const fence = resolveSqliteSessionTranscriptReadFence({ database, ...resolved });
-          const { stats, generation } =
+          const { stats, generation, cold } =
             options.previous !== undefined
               ? readTranscriptExportStatsFromDatabase(database, resolved.sessionId)
               : {
                   stats: readTranscriptStatsFromDatabase(database, resolved.sessionId),
                   generation: null,
+                  cold: false,
                 };
+          // Cached rows must still enter the existing archive restoration path.
+          if (cold) {
+            throw new SessionTranscriptColdError(resolved.sessionId);
+          }
           const throughSeq = Math.min(
             stats.eventCount === 0 ? -1 : stats.maxSeq,
             fence ? fence.beforeRawSeq - 1 : Number.POSITIVE_INFINITY,

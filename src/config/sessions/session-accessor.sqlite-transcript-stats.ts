@@ -19,6 +19,7 @@ type TranscriptStatsRow = Omit<
   lastMutationAtMs: number | null;
   lastObservedMutationAtMs: number | null;
   generation: string | null;
+  coldSessionId: string | null;
 };
 
 function transcriptStatsFromRow(row: TranscriptStatsRow | undefined): SessionTranscriptStats {
@@ -88,6 +89,7 @@ const transcriptStatsQuery = createSqliteQueryCache((database) => {
           eb.fn.coalesce("cold.raw_bytes", "events.size_bytes", eb.val(0)).as("sizeBytes"),
           "session.transcript_observed_at as lastObservedMutationAtMs",
           "session.transcript_updated_at as lastMutationAtMs",
+          "cold.session_id as coldSessionId",
           (includeGeneration
             ? eb
                 .selectFrom("transcript_rewrite_watermarks as rewrite")
@@ -127,10 +129,11 @@ export function readTranscriptStatsFromDatabase(
 export function readTranscriptExportStatsFromDatabase(
   database: Pick<OpenClawAgentDatabase, "db">,
   sessionId: string,
-): { stats: SessionTranscriptStats; generation: string | null } {
+): { stats: SessionTranscriptStats; generation: string | null; cold: boolean } {
   const row = transcriptStatsQuery(database.db).export([sessionId]).rows[0];
   return {
     generation: row?.generation ?? null,
+    cold: row?.coldSessionId != null,
     stats: transcriptStatsFromRow(row),
   };
 }

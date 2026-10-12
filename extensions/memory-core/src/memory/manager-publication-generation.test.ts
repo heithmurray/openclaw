@@ -113,7 +113,9 @@ it("retains session entry facts across memory publication and refreshes after a 
       await withOpenClawAgentDatabaseWrite(
         { agentId: "main", path: target.storePath },
         ({ db }) => {
-          db.prepare("UPDATE session_nodes SET entry_json = ? WHERE session_key = ?").run(
+          db.prepare(
+            "UPDATE session_nodes SET entry_json = ?, updated_at = 2, label = 'After' WHERE session_key = ?",
+          ).run(
             JSON.stringify({ sessionId: "memory-publication", updatedAt: 2, label: "After" }),
             target.sessionKey,
           );

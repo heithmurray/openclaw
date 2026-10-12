@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   appendTranscriptEvent,
+  appendTranscriptMessage,
   patchSessionEntryCore,
   persistSessionTranscriptTurn,
   readActiveTranscriptEntryAnchor,
@@ -101,14 +102,12 @@ describe("SQLite session snapshots and reset content revision", () => {
     const workerExport = () => buildSessionEntry(scope.sessionKey, scope);
     expect(await workerExport()).toEqual(await fullExport());
 
-    await appendTranscriptEvent(scope, {
-      type: "message",
-      id: "heartbeat-answer",
+    await appendTranscriptMessage(scope, {
+      eventId: "heartbeat-answer",
       message: { role: "assistant", content: "Excluded heartbeat continuation." },
     });
-    await appendTranscriptEvent(scope, {
-      type: "message",
-      id: "question",
+    await appendTranscriptMessage(scope, {
+      eventId: "question",
       message: {
         role: "user",
         content: "A searchable new preference.",
