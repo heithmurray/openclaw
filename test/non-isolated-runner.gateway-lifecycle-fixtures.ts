@@ -33,7 +33,8 @@ it("keeps live provenance notifications through afterAll", async () => {
   database = openOpenClawStateDatabase(options);
   expect(database.db.isOpen).toBe(true);
   (await prepareClawInstallSchemaVersions(options)).publish();
-  expect(lines()).toContain("A:ready");
+  const prepared = readCachedClawInstallSchemaVersions(options);
+  expect(lines(), prepared.kind === "state-error" ? String(prepared.error) : undefined).toContain("A:ready");
 });
 afterAll(() => {
   expect(database.db.isOpen, "fixture must reach runner drain with an open database").toBe(true);
@@ -57,10 +58,11 @@ it("drains the prior file and retires its provenance generation", async () => {
     const database = openOpenClawStateDatabase(options);
     expect(database.db.isOpen).toBe(true);
     (await prepareClawInstallSchemaVersions(options)).publish();
+    const prepared = readCachedClawInstallSchemaVersions(options);
     closeOpenClawStateDatabase();
     expect(database.db.isOpen).toBe(false);
     const observed = lines().slice(before);
-    expect(observed).toContain("B:ready");
+    expect(observed, prepared.kind === "state-error" ? String(prepared.error) : undefined).toContain("B:ready");
     expect(observed).toContain("B:state-error");
     expect(observed.filter((line) => line.startsWith("A:")), "retired provenance generation received a later file event").toEqual([]);
   } finally {

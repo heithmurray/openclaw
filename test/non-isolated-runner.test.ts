@@ -918,6 +918,7 @@ class AlphabeticalSequencer extends BaseSequencer {
 // ordinary setup hooks that could close A's database before runner cleanup.
 export default defineConfig({
   cacheDir: ${JSON.stringify(path.join(root, ".vite"))},
+  plugins: gateway.plugins,
   resolve: gateway.resolve,
   test: {
     name: "gateway-worker-lifetimes",
@@ -934,7 +935,13 @@ export default defineConfig({
     );
     const reportPath = path.join(root, "report.json");
     let child!: ChildProcess;
-    const result = await runVitestShutdownCommand({
+    const env = {
+      ...childEnv(),
+      OPENCLAW_VITEST_MAX_WORKERS: "1",
+      GATEWAY_LIFETIME_PROBE_ROOT: root,
+    };
+    const workers = createVitestWorkerRun(env);
+    const command = runVitestShutdownCommand({
       bin: resolveTestNodeExecPath(),
       args: [
         path.join(vitestPackageDir, "vitest.mjs"),
@@ -951,13 +958,20 @@ export default defineConfig({
         `--outputFile.json=${reportPath}`,
       ],
       cwd: repoRoot,
-      env: { ...childEnv(), OPENCLAW_VITEST_MAX_WORKERS: "1", GATEWAY_LIFETIME_PROBE_ROOT: root },
+      env,
+      workerRun: workers,
       maxBytes: 16 * 1024 * 1024,
       signal,
       onReady(owned) {
         child = owned;
       },
     });
+    let result: Awaited<typeof command>;
+    try {
+      result = await command;
+    } finally {
+      await workers.dispose();
+    }
     expect(result.code, result.stdout + result.stderr).toBe(0);
     expect(child.exitCode).toBe(0);
     expect(child.signalCode).toBeNull();
