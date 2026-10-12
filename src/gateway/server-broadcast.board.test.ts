@@ -18,6 +18,7 @@ import { ensureUserProfileRoleSchema } from "../state/user-profiles-schema.js";
 import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { boardStore } from "./board-store.js";
+import { prepareGatewayRecipientProfile } from "./expected-profile.js";
 import { progressCardStore } from "./progress-card-store.js";
 import { createGatewayBroadcaster } from "./server-broadcast.js";
 import { makeClient } from "./server-broadcast.test-helpers.js";
@@ -392,8 +393,6 @@ describe("collaboration event scope guards", () => {
     const hidden = { visibility: "shared" as const, incognito: true as const };
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
       ensureUserProfileRoleSchema({});
-      using profileCatalog = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
-      void profileCatalog;
       const cfg = rolePolicyConfig();
       setRuntimeConfigSnapshot(cfg, cfg);
       const sessionKey = "agent:main:subscription-filter";
@@ -413,8 +412,10 @@ describe("collaboration event scope guards", () => {
       const unscoped = makeClient("unscoped", "operator", ["operator.read"]);
       const peers = [subscribed, ...unrelated, unscoped];
       const identity = roleClient("view", "reader");
+      using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
       for (const peer of peers) {
         Object.assign(peer.client, identity, { connect: { ...identity.connect } });
+        prepareGatewayRecipientProfile(peer.client);
       }
       const subscribers = createSessionMessageSubscriberRegistry();
       for (const peer of [subscribed, ...unrelated]) {
@@ -658,8 +659,6 @@ describe("collaboration event scope guards", () => {
 it("delivers committed collector updates to a parent-only cross-agent viewer", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async () => {
     ensureUserProfileRoleSchema({});
-    using profileCatalog = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
-    void profileCatalog;
     const cfg: OpenClawConfig = {
       ...rolePolicyConfig(),
       agents: { ownership: "explicit", entries: { ops: {}, research: {} } },
@@ -686,6 +685,7 @@ it("delivers committed collector updates to a parent-only cross-agent viewer", a
       });
     }
     invalidateSessionSharingSnapshot();
+    using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
     expect(
       canReceiveSessionEventForClient({
         cfg,

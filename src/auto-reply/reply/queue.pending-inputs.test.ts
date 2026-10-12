@@ -13,6 +13,7 @@ import {
   upsertSessionEntryCore,
 } from "../../config/sessions/session-accessor.js";
 import { useTempSessionsFixture } from "../../config/sessions/test-helpers.js";
+import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { captureGatewayRootWorkReleaseObserver } from "../../process/gateway-work-admission.js";
 import {
   createUserTurnTranscriptRecorder,
@@ -48,6 +49,7 @@ const fault = useSqliteWorkerFault([
 
 describe("followup queue durable input consumption", () => {
   const fixture = useTempSessionsFixture("openclaw-queue-pending-");
+  let config: OpenClawConfig;
   let caseSequence = 0;
   let sessionKey = "";
   const sessionId = "queue-pending-session";
@@ -55,7 +57,8 @@ describe("followup queue durable input consumption", () => {
   const scope = () => ({ agentId: "main", sessionId, sessionKey, storePath: fixture.storePath() });
 
   beforeEach(async () => {
-    setRuntimeConfigSnapshot({ session: { store: fixture.storePath() } });
+    config = { session: { store: fixture.storePath() } };
+    setRuntimeConfigSnapshot(config);
     sessionKey = `agent:main:queue-pending-${++caseSequence}`;
     vi.mocked(executeAgentTurn).mockReset();
     await upsertSessionEntryCore(scope(), { sessionId, updatedAt: 1 });
@@ -71,7 +74,6 @@ describe("followup queue durable input consumption", () => {
   });
 
   const createStagedRun = async (runId: string) => {
-    const config = { session: { store: fixture.storePath() } };
     const beforeMessageWrite = vi.fn((params: { message: PersistedUserTurnMessage }) => ({
       ...params.message,
       content: `${runId} approved`,
