@@ -15,6 +15,7 @@ import {
   runOpenClawAgentWriteTransaction,
 } from "../../state/openclaw-agent-db.js";
 import { runOpenClawAgentWriteAdmission } from "../../state/openclaw-agent-write-admission.js";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../runtime-snapshot.js";
 import {
   appendTranscriptMessage,
   appendTranscriptMessageSync,
@@ -105,6 +106,7 @@ describe("accepted input custody", () => {
       );
 
   beforeEach(async () => {
+    setRuntimeConfigSnapshot({ session: { store: fixture.storePath() } });
     await upsertSessionEntryCore(scope(), { sessionId, updatedAt: 1 });
   });
   afterEach(async () => {
@@ -114,6 +116,7 @@ describe("accepted input custody", () => {
     }
     await Promise.allSettled(retained.map(async (receipt) => receipt.settled?.()));
     closeOpenClawAgentDatabasesForTest();
+    clearRuntimeConfigSnapshot();
   });
 
   it("keeps accepted input outside the active transcript and applies its hook once across replay and promotion", async () => {
