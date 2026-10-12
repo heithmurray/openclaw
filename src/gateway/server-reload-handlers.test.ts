@@ -1718,6 +1718,7 @@ describe("gateway hot reload model state", () => {
         const initialCronState = createLazyGatewayCronState({
           scheduler,
           cfg: config,
+          storePath: path.join(fixtureDir, "jobs.json"),
           deps: {} as never,
           broadcast: vi.fn(),
         });
@@ -2063,6 +2064,7 @@ describe("gateway hot reload model state", () => {
       const cronState = buildGatewayCronService({
         scheduler,
         cfg: initialConfig,
+        storePath: path.join(fixtureDir, "cron", "jobs.json"),
         deps: {} as never,
         env: { ...process.env, OPENCLAW_STATE_DIR: fixtureDir, OPENCLAW_SKIP_CRON: "0" },
         broadcast: vi.fn(),

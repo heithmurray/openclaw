@@ -950,6 +950,13 @@ const runSqliteSessionLifecycle =
   (changedScopeHasSqliteSessionLifecycleImpact ||
     selectedOwnerTest("test/scripts/sqlite-sessions-transcripts-flip-proof.built-cli.e2e.test.ts"));
 const postgresConformancePaths = [
+  "scripts/generate-postgres-schema.mts",
+  "scripts/lib/postgres-schema-catalog.mts",
+  "test/scripts/generate-postgres-schema.test.ts",
+  "src/state/*schema*",
+  "src/state/openclaw-state-db-contract.ts",
+  "src/state/postgres-schema.generated/**",
+  "src/cron/store/runtime-authority-store.ts",
   "src/infra/database-engine/**",
   "src/infra/postgres-sync/**",
   "src/infra/sql-connection.ts",
@@ -1236,7 +1243,7 @@ const nodeTestShards = targetNodeTestShards
         (plan) => plan.configs?.includes("test/vitest/vitest.e2e.config.ts") ?? false,
       ),
     };
-    if (compactReleaseMatrixRows) {
+    if (compactReleaseMatrixRows || (packedGroups && !frozenTarget)) {
       // The workflow treats absent feature flags as false and history as [].
       // Encoded groups own their names; the outer name is only a legacy fallback.
       for (const key of [
