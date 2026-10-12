@@ -39,7 +39,7 @@ describe("handleDirList — input validation", () => {
 });
 
 describe("handleDirList — invalid directory bindings", () => {
-  it.each(["malformed", "write"] as const)(
+  it.each(["malformed", "write", "device", "inode"] as const)(
     "rejects a %s binding before reading the directory",
     async (kind) => {
       const stats = await fs.stat(tmpRoot, { bigint: true });
@@ -52,6 +52,8 @@ describe("handleDirList — invalid directory bindings", () => {
           anchorDevice: binding.device,
           anchorInode: binding.inode,
         },
+        device: { ...binding, device: "different" },
+        inode: { ...binding, inode: "different" },
       }[kind];
       const readdir = vi.spyOn(fs, "readdir");
 

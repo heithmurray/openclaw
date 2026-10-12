@@ -23,6 +23,20 @@ function appliedLineConfig(
   return (applyLineSetup(input, cfg).channels?.line ?? {}) as LineChannelConfig;
 }
 
+describe("line setup token alias", () => {
+  it("maps the shipped --token switch onto channelAccessToken", () => {
+    expect(appliedLineConfig({ token: "alias-token" }).channelAccessToken).toBe("alias-token");
+  });
+
+  it("prefers the explicit --channel-access-token over the alias", () => {
+    const applied = appliedLineConfig({
+      token: "alias-token",
+      channelAccessToken: "explicit-token",
+    });
+    expect(applied.channelAccessToken).toBe("explicit-token");
+  });
+});
+
 describe("LINE credential rotation", () => {
   // The inline value wins over its file at resolution time, so a rotation that
   // leaves it behind silently keeps using the credential it was meant to replace.
@@ -56,5 +70,13 @@ describe("LINE credential rotation", () => {
     expect(rotated.channelSecret).toBe("inline-secret");
     expect(rotated.tokenFile).toBeUndefined();
     expect(rotated.secretFile).toBeUndefined();
+  });
+
+  it("leaves the credential that was not replaced alone", () => {
+    const rotated = appliedLineConfig({ tokenFile: "/run/secrets/line-token" }, inlineFirst());
+
+    expect(rotated.tokenFile).toBe("/run/secrets/line-token");
+    expect(rotated.channelSecret).toBe("inline-secret");
+    expect(rotated.channelAccessToken).toBeUndefined();
   });
 });

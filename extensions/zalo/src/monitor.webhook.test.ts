@@ -238,6 +238,26 @@ describe("handleZaloWebhookRequest", () => {
     });
   });
 
+  it("rate limits authenticated requests even when query strings churn", async () => {
+    registerTarget({ path: "/hook-query-rate" });
+
+    await withServer(webhookRequestHandler, async (baseUrl) => {
+      let saw429 = false;
+      for (let i = 0; i < 130; i += 1) {
+        const response = await postWebhook({
+          baseUrl,
+          path: `/hook-query-rate?nonce=${i}`,
+          body: "{}",
+        });
+        if (response.status === 429) {
+          saw429 = true;
+          break;
+        }
+      }
+      expect(saw429).toBe(true);
+    });
+  });
+
   it("does not let unauthorized floods rate-limit authenticated traffic from a different trusted forwarded client IP", async () => {
     registerTarget({
       path: "/hook-preauth-split",

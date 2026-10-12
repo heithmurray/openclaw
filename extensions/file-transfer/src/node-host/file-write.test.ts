@@ -469,6 +469,18 @@ describe("handleFileWrite — integrity check", () => {
 });
 
 describe("handleFileWrite — base64 round-trip validation", () => {
+  it("rejects malformed base64 that silently drops characters", async () => {
+    const target = path.join(tmpRoot, "bad.bin");
+    // "@" is not in the base64 alphabet — Buffer.from would silently drop
+    // it and decode "AAA" instead of failing.
+    const r = await handleFileWrite({
+      path: target,
+      contentBase64: "AAA@@@",
+    });
+    expectFailure(r, "INVALID_BASE64");
+    await expectAccessMissing(target);
+  });
+
   it("rejects whitespace and control characters before decoding", async () => {
     const bufferFrom = vi.spyOn(Buffer, "from");
     const target = path.join(tmpRoot, "whitespace.bin");

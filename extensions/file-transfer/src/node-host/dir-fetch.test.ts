@@ -111,6 +111,44 @@ describe("handleDirFetch — happy path", () => {
     expect(r.fileCount).toBe(r.entries?.length);
   });
 
+  it.runIf(HAS_TAR && process.platform !== "win32")(
+    "rejects a retargeted path before creating an archive",
+    async () => {
+      const first = path.join(tmpRoot, "first");
+      const second = path.join(tmpRoot, "second");
+      const link = path.join(tmpRoot, "current");
+      await fs.mkdir(first);
+      await fs.mkdir(second);
+      await fs.writeFile(path.join(first, "approved.txt"), "approved");
+      await fs.writeFile(path.join(second, "not-approved.txt"), "not approved");
+      await fs.symlink(first, link);
+
+      const preflight = await handleDirFetch({
+        path: link,
+        followSymlinks: true,
+        preflightOnly: true,
+      });
+      if (!preflight.ok) {
+        throw new Error(`expected ok, got ${preflight.code}: ${preflight.message}`);
+      }
+      await fs.unlink(link);
+      await fs.symlink(second, link);
+
+      const result = await handleDirFetch({
+        path: link,
+        followSymlinks: true,
+        expectedCanonicalPath: preflight.path,
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        code: "CANONICAL_PATH_CHANGED",
+        message: "canonical path differs from the authorized target",
+        canonicalPath: second,
+      });
+    },
+  );
+
   it.runIf(process.platform === "linux")(
     "returns an invalid-path error for a non-UTF-8 filename instead of a partial preflight",
     async () => {
