@@ -329,7 +329,7 @@ export async function runSessionEntryWorkerOperation<
             settlement.transaction &&
             !params.nativeSettlement &&
             !settlement.candidate &&
-            !transferId &&
+            !transfer.id &&
             !settlement.admitted
           ) {
             await settlement.transaction.retained.settled;

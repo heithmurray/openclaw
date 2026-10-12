@@ -443,7 +443,7 @@ describe("server-runtime-services", () => {
         "Session delivery recovery failed: Error: database busy",
       ),
     );
-    services.heartbeatRunner.stop();
+    await services.stopScheduledServices();
   });
 
   it("diagnoses legacy state once and leaves an empty outbound queue idle until enqueue", async () => {
