@@ -10,15 +10,14 @@ export async function captureCronSchedulerWake<T>(
     BroadcastChannel.prototype,
     "addEventListener",
   );
-  const register = BroadcastChannel.prototype.addEventListener;
   BroadcastChannel.prototype.addEventListener = function (
     this: BroadcastChannel,
-    ...[type, listener, options]: Parameters<typeof register>
+    ...[type, listener, options]: Parameters<BroadcastChannel["addEventListener"]>
   ) {
     if (type === "message" && this.name.startsWith("openclaw.cron.")) {
       dispatchWake = () => this.dispatchEvent(new MessageEvent("message"));
     }
-    register.call(this, type, listener, options);
+    EventTarget.prototype.addEventListener.call(this, type, listener, options);
   };
   let result: T;
   try {

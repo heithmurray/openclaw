@@ -8,6 +8,7 @@ import { withSessionTranscriptWriteAssertion } from "../../config/sessions/trans
 import {
   createFollowupRun,
   createMinimalRunAgentTurnParams,
+  createScheduledAutomation,
   getExecuteAgentTurnForTest,
   initialFallbackAttemptOptions,
   setupAgentRunnerExecutionTestState,
@@ -17,15 +18,21 @@ import {
 
 const state = await setupAgentRunnerExecutionTestState();
 
-describe.each(["cli", "embedded"] as const)("heartbeat %s source delivery", (runtime) => {
-  it.each([false, true, undefined])(
-    "honors the admitted explicit-target policy (%s) at message-tool creation",
-    async (requireExplicitMessageTarget) => {
+describe.each(["cli", "embedded"] as const)("%s source delivery", (runtime) => {
+  it.each(["ordinary", "scheduled", "scheduled-without-delivery"] as const)(
+    "honors the %s explicit-target policy at message-tool creation",
+    async (source) => {
       const sessionKey = "agent:main:dashboard:completion";
       const followupRun = createFollowupRun();
       followupRun.run.sessionKey = sessionKey;
       followupRun.run.messageProvider = "webchat";
       followupRun.run.sourceReplyDeliveryMode = "message_tool_only";
+      if (source !== "ordinary") {
+        followupRun.run.scheduledAutomation = createScheduledAutomation();
+        if (source === "scheduled-without-delivery") {
+          followupRun.run.scheduledAutomation.job.delivery = { mode: "none" };
+        }
+      }
       followupRun.originatingChannel = "webchat";
       followupRun.originatingTo = sessionKey;
       followupRun.originatingChatType = "direct";
@@ -74,10 +81,8 @@ describe.each(["cli", "embedded"] as const)("heartbeat %s source delivery", (run
         }
         return { payloads: [], meta: {} };
       });
-      const opts = { isHeartbeat: true, requireExplicitMessageTarget };
       const params = createMinimalRunAgentTurnParams({
         followupRun,
-        opts,
         sessionCtx: {
           Provider: "webchat",
           Surface: "webchat",
@@ -88,13 +93,12 @@ describe.each(["cli", "embedded"] as const)("heartbeat %s source delivery", (run
           SessionKey: sessionKey,
         },
       });
-      params.isHeartbeat = true;
       params.sessionKey = sessionKey;
       const executeAgentTurn = await getExecuteAgentTurnForTest();
       const result = await executeAgentTurn(params);
       expect(result.kind).toBe("success");
       expect(runAgent).toHaveBeenCalledOnce();
-      if (requireExplicitMessageTarget === false) {
+      if (source === "ordinary") {
         expect(sendError).toBeUndefined();
         expect(sourceReply?.details).toMatchObject({
           channel: "webchat",
@@ -153,9 +157,7 @@ describe.each(["cli", "embedded"] as const)("heartbeat %s source delivery", (run
     const execute = await getExecuteAgentTurnForTest();
     const params = createMinimalRunAgentTurnParams({
       followupRun,
-      opts: { isHeartbeat: true },
     });
-    params.isHeartbeat = true;
     params.storePath = path.join(followupRun.run.workspaceDir, "sessions.json");
     params.sessionKey = followupRun.run.sessionKey;
     const entry = await replaceSessionEntry(

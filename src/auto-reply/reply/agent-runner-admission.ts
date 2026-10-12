@@ -2,6 +2,7 @@ import type { AdmittedRunContext } from "../../agents/admitted-run-context.js";
 import { createDeferredEmbeddedRunLifecycleManager } from "../../agents/embedded-agent-runner/run/deferred-lifecycle-owner.js";
 import { readChannelContextGatewayContextResolver } from "../../channels/message-access/admission-evidence.js";
 import { composeSessionSourceAssertion } from "../../config/sessions/session-source-authority.js";
+import { captureOwnedTranscriptWriteAssertion } from "../../config/sessions/transcript-write-context.js";
 import { resolveCronJobConfigRevision } from "../../cron/config-revision.js";
 import { prepareCronRunAdmission } from "../../cron/run-admission.js";
 import { resolveCronAuthenticatedChannelRequester } from "../../cron/tools-allow-provenance.js";
@@ -27,14 +28,20 @@ export function prepareReplyTurnExecution(params: AgentTurnParams, runId: string
     readChannelContextGatewayContextResolver(params.sessionCtx) ??
     getPluginRuntimeGatewayRequestScope()?.resolveGatewayContext;
   const automation = params.followupRun.run.scheduledAutomation;
+  const sessionKey = params.sessionKey ?? params.followupRun.run.sessionKey;
   const assertSourceCurrent = composeSessionSourceAssertion([
+    captureOwnedTranscriptWriteAssertion({
+      agentId: params.followupRun.run.agentId,
+      sessionId: params.followupRun.run.sessionId,
+      sessionKey,
+      storePath: params.storePath,
+    }),
     params.followupRun.run.senderIsOwner === true
       ? captureCommandOwnerAssertion(params.followupRun.run)
       : undefined,
     params.followupRun.run.internalEventExecution?.assertCurrent,
     automation?.assertCurrent,
   ]);
-  const sessionKey = params.sessionKey ?? params.followupRun.run.sessionKey;
   if (automation && !sessionKey) {
     throw new Error("A scheduled session turn requires its admitted session key");
   }
