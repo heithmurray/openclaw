@@ -417,7 +417,7 @@ it.skipIf(process.platform === "win32")(
             );
           }
           let retained: ReturnType<typeof readSettlement>["placement"];
-          for (const timing of ["after-agent-wait", "during-workspace-finish"] as const) {
+          for (const timing of ["after-workspace-clear", "during-workspace-finish"] as const) {
             const markers = {
               A: "REQUIRED-NATIVE-" + pair + "-A",
               B: "REQUIRED-NATIVE-" + pair + "-B",
@@ -428,12 +428,14 @@ it.skipIf(process.platform === "win32")(
             const atResume = createDeferred();
             const continueResume = createDeferred();
             const changedClear = createDeferred();
+            const bChangedClear = createDeferred();
             const bEntered = createDeferred();
             barriers.push(continueQuiesce, continueResume);
             let aClaim: string | undefined;
             let aRun: string | undefined;
+            let bClaim: string | undefined;
             let bRun: string | undefined;
-            let aDone = false;
+            let sawBPending = false;
             let sawPending = false;
             let finishReleased = false;
             let sawClear = false;
@@ -469,6 +471,16 @@ it.skipIf(process.platform === "win32")(
                 record("sessions.changed-clear", { creation, timing });
                 changedClear.resolve();
               }
+              if (
+                sawBPending &&
+                placement?.state === "active" &&
+                !placement.workspaceResultReconciling
+              ) {
+                const settled = readSettlement(gateway, key);
+                if (!settled.pending && settled.placement?.turn_claim_id === null) {
+                  bChangedClear.resolve();
+                }
+              }
             };
             beforeInvoke = async (frame, host) => {
               if (frame.command !== NODE_WORKER_WORKSPACE_EXEC_COMMAND) {
@@ -485,6 +497,22 @@ it.skipIf(process.platform === "win32")(
               // present only for prepared-workspace transport binding.
               if (input.sessionId !== readSettlement(gateway, key).placement?.session_id) {
                 return;
+              }
+              if (bRun && input.argv[2] === REMOTE_WORKSPACE_QUIESCE_JS) {
+                const state = readSettlement(gateway, key);
+                expect(state.pending).toMatchObject({
+                  session_id: input.sessionId,
+                  claim_id: bClaim,
+                  run_id: bRun,
+                  workspace_accepted_at_ms: null,
+                  staged_result_ref: null,
+                });
+                expect(state.placement).toMatchObject({
+                  turn_claim_id: bClaim,
+                  turn_claim_run_id: bRun,
+                });
+                sawBPending = true;
+                record("B-finishing-ACK-pending", { creation, timing, state });
               }
               if (!quiesced && input.argv[2] === REMOTE_WORKSPACE_QUIESCE_JS) {
                 quiesced = true;
@@ -537,14 +565,15 @@ it.skipIf(process.platform === "win32")(
               if (retained) {
                 expect(state.placement?.environment_id).toBe(retained.environment_id);
               }
+              bClaim = state.placement?.turn_claim_id ?? undefined;
               bRun = state.placement?.turn_claim_run_id ?? undefined;
+              expect(bClaim).toBeTruthy();
               expect(bRun).toBeTruthy();
               record("B-after-A-atomic-clear", { admittedRunId: markers.B, ...state });
               bEntered.resolve();
             };
             await send(key, markers.A);
             const aWait = wait(markers.A).then((value) => {
-              aDone = true;
               if (value.status !== "ok") {
                 observationFailure.reject(new Error("A agent.wait: " + JSON.stringify(value)));
               }
@@ -556,6 +585,9 @@ it.skipIf(process.platform === "win32")(
               atQuiesce.promise,
               "A never reached physical terminal receipt / quiescence",
             );
+            // Reply completion is independent of workspace settlement; the held
+            // quiescence command must not delay the committed assistant reply.
+            expect(await aWait).toMatchObject({ status: "ok" });
             const current = await describe(key);
             record("A-sessions.describe-pending", {
               creation,
@@ -576,7 +608,7 @@ it.skipIf(process.platform === "win32")(
             expect(
               committed.messages.some((message) => wireMessageText(message) === markers.A),
             ).toBe(true);
-            expect(aDone).toBe(false);
+            expect(readSettlement(gateway, key).pending?.claim_id).toBe(aClaim);
             const placed = readSettlement(gateway, key).placement!;
             if (retained) {
               expect(placed.session_id).toBe(retained.session_id);
@@ -623,13 +655,13 @@ it.skipIf(process.platform === "win32")(
             }
             continueQuiesce.resolve();
             await checkpoint(atResume.promise, "A never accepted its unchanged workspace result");
-            expect(aDone).toBe(false);
+            expect(readSettlement(gateway, key).placement?.turn_claim_id).toBe(aClaim);
             finishReleased = true;
             continueResume.resolve();
             expect(await aWait).toMatchObject({ status: "ok" });
             record("A-agent.wait", { creation, timing });
             await checkpoint(changedClear.promise, "settled placement never published clear");
-            if (timing === "after-agent-wait") {
+            if (timing === "after-workspace-clear") {
               const settled = readSettlement(gateway, key);
               expect(settled.pending).toBeUndefined();
               expect(settled.placement?.turn_claim_id).toBeNull();
@@ -644,6 +676,7 @@ it.skipIf(process.platform === "win32")(
             // id owns queue cancellation and returns "pending" until adoption settles.
             // Wait on the exact real claim observed at native HTTP admission.
             expect(await wait(bRun!)).toMatchObject({ status: "ok" });
+            await checkpoint(bChangedClear.promise, "B workspace settlement never published clear");
             const final = readSettlement(gateway, key);
             expect(final.pending).toBeUndefined();
             expect(final.placement).toMatchObject({

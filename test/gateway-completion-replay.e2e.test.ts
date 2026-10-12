@@ -306,7 +306,7 @@ async function startModel() {
         messageId: "msg_" + id,
         responseId: "resp_" + id,
       });
-    if (text?.includes("[Subagent Task]") && text.split("\n\n").includes(CHILD_TASK)) {
+    if (text?.includes("[Subagent Task]") && text.includes(CHILD_TASK)) {
       childStarted = true;
       await child.promise;
       final("CHILD_REPLAY_RESULT");

@@ -11,11 +11,18 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createQaGatewayChild } from "../../../../extensions/qa-lab/api.js";
 import type { AuditRunInspectResult } from "../../../../packages/gateway-protocol/src/index.js";
 import {
+  executeSqliteQueryTakeFirstSync,
+  getNodeSqliteKysely,
+} from "../../../../src/infra/kysely-sync.js";
+import {
   NODE_WORKER_BUNDLE_INSTALL_COMMAND,
   NODE_WORKER_SUPERVISOR_LAUNCH_COMMAND,
   NODE_WORKER_SUPERVISOR_STATUS_COMMAND,
   NODE_WORKER_WORKSPACE_EXEC_COMMAND,
 } from "../../../../src/infra/node-commands.js";
+import { withOpenClawStateDatabaseReadOnly } from "../../../../src/state/openclaw-state-db-readonly.js";
+import type { DB as StateDatabase } from "../../../../src/state/openclaw-state-db.generated.js";
+import { createDeferred, withinTest } from "../../../helpers/promise.js";
 import { stopQaGatewayFixture } from "../../../helpers/qa-gateway-cleanup.js";
 import { useAutoCleanupTempDirTracker } from "../../../helpers/temp-dir.js";
 import {
@@ -77,11 +84,36 @@ function requireSafeGenericDecisionDisplay(result: AuditRunInspectResult) {
   return receipt!;
 }
 
+function readWorkspaceSettlement(gateway: WireGateway, sessionId: string) {
+  return withOpenClawStateDatabaseReadOnly(
+    ({ db }) => {
+      const query = getNodeSqliteKysely<StateDatabase>(db);
+      return {
+        placement: executeSqliteQueryTakeFirstSync(
+          db,
+          query
+            .selectFrom("worker_session_placements")
+            .selectAll()
+            .where("session_id", "=", sessionId),
+        ),
+        pending: executeSqliteQueryTakeFirstSync(
+          db,
+          query
+            .selectFrom("worker_workspace_pending_results")
+            .selectAll()
+            .where("session_id", "=", sessionId),
+        ),
+      };
+    },
+    { env: gateway.runtimeEnv },
+  );
+}
+
 describe("node worker launch wire", () => {
   it(
     "transfers and reconciles a gateway-push workspace through a device runner",
     { timeout: TEST_TIMEOUT_MS },
-    async () => {
+    async ({ signal }) => {
       const root = tempDirs.make("openclaw-node-worker-launch-wire-");
       const provider = await startMidturnProvider();
       const published = await createPublishedWireWorkspace(root);
@@ -100,6 +132,57 @@ describe("node worker launch wire", () => {
       let workerAuditBeforeRestart: string | undefined;
       let testFailure: { error: unknown } | undefined;
       let cleanupFailures: unknown[];
+      const workspaceSettlements = new Map<
+        string,
+        {
+          sessionId: string;
+          replyDelivered: boolean;
+          observe: () => void;
+        }
+      >();
+      const sessionIds = new Map<string, string>();
+      const watchWorkspaceSettlement = (sessionKey: string, runId: string) => {
+        expect(workspaceSettlements.has(sessionKey)).toBe(false);
+        const sessionId = sessionIds.get(sessionKey);
+        if (!sessionId) {
+          throw new Error(`Missing created session identity for ${sessionKey}`);
+        }
+        const settled = createDeferred();
+        void settled.promise.catch(() => {});
+        let claimId: string | undefined;
+        const watcher = {
+          sessionId,
+          replyDelivered: false,
+          observe: () => {
+            try {
+              const state = readWorkspaceSettlement(gateway!, sessionId);
+              expect(state.placement?.state).toBe("active");
+              if (state.pending) {
+                expect(state.pending.run_id).toBe(runId);
+                expect(state.pending.recovery_requested_at_ms).toBeNull();
+                expect(state.placement?.turn_claim_run_id).toBe(runId);
+                expect(state.pending.claim_id).toBe(state.placement?.turn_claim_id);
+                claimId ??= state.pending.claim_id;
+                expect(state.pending.claim_id).toBe(claimId);
+                return;
+              }
+              expect(state.placement?.turn_claim_id).toBeNull();
+              workspaceSettlements.delete(sessionKey);
+              settled.resolve();
+            } catch (error) {
+              settled.reject(error);
+            }
+          },
+        };
+        workspaceSettlements.set(sessionKey, watcher);
+        return async () => {
+          watcher.replyDelivered = true;
+          // Close the already-settled race once; later checks follow public
+          // clear events, whose coalescing may omit the intermediate pending row.
+          watcher.observe();
+          await withinTest(settled.promise, signal);
+        };
+      };
 
       try {
         gateway = await startPairedNodeWorkerGateway({
@@ -108,7 +191,29 @@ describe("node worker launch wire", () => {
           executionIdentity: true,
           useRepoCli: false,
         });
-        operator = await connectWireClient({ gateway, role: "operator", identity: null });
+        operator = await connectWireClient({
+          gateway,
+          role: "operator",
+          identity: null,
+          onEvent: (event) => {
+            if (event.event !== "sessions.changed" || !isRecord(event.payload)) {
+              return;
+            }
+            const session = event.payload.session;
+            if (!isRecord(session) || typeof session.key !== "string") {
+              return;
+            }
+            const settlement = workspaceSettlements.get(session.key);
+            const placement = session.placement;
+            if (!settlement || session.sessionId !== settlement.sessionId || !isRecord(placement)) {
+              return;
+            }
+            if (settlement.replyDelivered && !placement.workspaceResultReconciling) {
+              settlement.observe();
+            }
+          },
+        });
+        await operator.request("sessions.subscribe", {});
         workerNode = await createPairedNodeWorkerHost({
           gateway,
           operator,
@@ -150,7 +255,7 @@ describe("node worker launch wire", () => {
         });
         expect(workerNode.client).toBeTruthy();
 
-        await operator.request("sessions.create", {
+        const createdSession = await operator.request<{ sessionId: string }>("sessions.create", {
           key: SESSION_KEY,
           agentId: "qa",
           worktree: true,
@@ -160,6 +265,7 @@ describe("node worker launch wire", () => {
           worktreeBaseRef: "main",
           cwd: published.source,
         });
+        sessionIds.set(SESSION_KEY, createdSession.sessionId);
         const created = (await gateway.call("sessions.describe", { key: SESSION_KEY })) as {
           session?: { execCwd?: string; spawnedCwd?: string; permissionMode?: string };
         };
@@ -219,6 +325,7 @@ describe("node worker launch wire", () => {
         await fs.writeFile(path.join(remoteWorkspaceDir, "node-result.txt"), "device result\n");
 
         const runId = `node-worker-launch-wire-${Date.now()}`;
+        const workspaceSettled = watchWorkspaceSettlement(SESSION_KEY, runId);
         const started = await operator.request<{ runId?: string; status?: string }>("chat.send", {
           sessionKey: SESSION_KEY,
           message: BASELINE_PROMPT,
@@ -236,6 +343,7 @@ describe("node worker launch wire", () => {
             `node worker turn failed: ${JSON.stringify(completed)}\n${gateway.logs().slice(-12_000)}`,
           );
         }
+        await workspaceSettled();
         await workerNode.waitForInvokes();
         expect(workerNode.invokeErrors).toEqual([]);
         expect(reconnected).toBe(true);
@@ -302,6 +410,7 @@ describe("node worker launch wire", () => {
           });
         }
         const permissionRunId = `node-worker-permission-${Date.now()}`;
+        const permissionWorkspaceSettled = watchWorkspaceSettlement(SESSION_KEY, permissionRunId);
         await expect(
           operator.request<{ runId?: string; status?: string }>("chat.send", {
             sessionKey: SESSION_KEY,
@@ -317,6 +426,7 @@ describe("node worker launch wire", () => {
             { timeoutMs: PROOF_TIMEOUT_MS + 5_000 },
           ),
         ).resolves.toMatchObject({ status: "ok" });
+        await permissionWorkspaceSettled();
         await workerNode.waitForInvokes();
         expect(workerNode.invokeErrors).toEqual([]);
 
@@ -371,7 +481,7 @@ describe("node worker launch wire", () => {
           },
         });
         const legacySessionKey = `${SESSION_KEY}-legacy-node`;
-        await operator.request("sessions.create", {
+        const legacyCreated = await operator.request<{ sessionId: string }>("sessions.create", {
           key: legacySessionKey,
           agentId: "qa",
           worktree: true,
@@ -379,6 +489,7 @@ describe("node worker launch wire", () => {
           worktreeBaseRef: "main",
           cwd: published.source,
         });
+        sessionIds.set(legacySessionKey, legacyCreated.sessionId);
         await gateway.call(
           "sessions.dispatch",
           { key: legacySessionKey, deviceId: legacyWorkerNode.identity.deviceId },
@@ -414,6 +525,7 @@ describe("node worker launch wire", () => {
         await legacyWorkerNode.disconnect();
         await legacyWorkerNode.connect({ environmentSession: true });
         const legacyRunId = `node-worker-launch-wire-legacy-${Date.now()}`;
+        const legacyWorkspaceSettled = watchWorkspaceSettlement(legacySessionKey, legacyRunId);
         await operator.request("chat.send", {
           sessionKey: legacySessionKey,
           message: BASELINE_PROMPT,
@@ -427,6 +539,7 @@ describe("node worker launch wire", () => {
             { timeoutMs: PROOF_TIMEOUT_MS + 5_000 },
           ),
         ).resolves.toMatchObject({ status: "ok" });
+        await legacyWorkspaceSettled();
         await legacyWorkerNode.waitForInvokes();
         expect(legacyWorkerNode.invokeErrors).toEqual([]);
         expect(legacyWorkerNode.commands).toContain(NODE_WORKER_SUPERVISOR_LAUNCH_COMMAND);
@@ -447,7 +560,7 @@ describe("node worker launch wire", () => {
         const loadSessions: string[] = [];
         for (let index = 0; index < FINALIZATION_LOAD_CONCURRENCY; index += 1) {
           const sessionKey = `${SESSION_KEY}-load-${index}`;
-          await operator.request("sessions.create", {
+          const loadCreated = await operator.request<{ sessionId: string }>("sessions.create", {
             key: sessionKey,
             agentId: "qa",
             worktree: true,
@@ -455,6 +568,7 @@ describe("node worker launch wire", () => {
             worktreeBaseRef: "main",
             cwd: published.source,
           });
+          sessionIds.set(sessionKey, loadCreated.sessionId);
           await gateway.call(
             "sessions.dispatch",
             { key: sessionKey, deviceId: workerNode.identity.deviceId },
@@ -491,12 +605,14 @@ describe("node worker launch wire", () => {
         const freshConnectionSamples: number[] = [];
         try {
           for (let wave = 0; wave < FINALIZATION_LOAD_WAVES; wave += 1) {
+            const loadWorkspaceSettlements: Array<() => Promise<void>> = [];
             const waveFinalizationStarted = new Promise<number>((resolve) => {
               resolveWaveFinalizationStarted = resolve;
             });
             const loadRunIds = await Promise.all(
               loadSessions.map(async (sessionKey, index) => {
                 const loadRunId = `node-worker-finalization-load-${wave}-${index}-${Date.now()}`;
+                loadWorkspaceSettlements[index] = watchWorkspaceSettlement(sessionKey, loadRunId);
                 const loadStarted = await operator!.request<{ runId?: string; status?: string }>(
                   "chat.send",
                   {
@@ -512,7 +628,7 @@ describe("node worker launch wire", () => {
             );
             const waveGateway = gateway;
             const waits = Promise.all(
-              loadRunIds.map(async (loadRunId) => {
+              loadRunIds.map(async (loadRunId, index) => {
                 const completedLoad = await operator!.request<{ status?: string }>(
                   "agent.wait",
                   { runId: loadRunId, timeoutMs: PROOF_TIMEOUT_MS },
@@ -522,6 +638,7 @@ describe("node worker launch wire", () => {
                   completedLoad,
                   `load run ${loadRunId} failed\n${redactSensitiveText(JSON.stringify(completedLoad)).slice(0, 4000)}\n${waveGateway.logs().slice(-12_000)}`,
                 ).toMatchObject({ status: "ok" });
+                await loadWorkspaceSettlements[index]!();
               }),
             );
             // Failed turns may never upload; observe their failure while waiting for finalization.
