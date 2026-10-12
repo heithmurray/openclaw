@@ -341,17 +341,20 @@ export function bootstrapApplication(): ApplicationRuntime {
         !isSettingsTakeover(selectShellRouteState(router.getState()).routeId)
       );
     },
-    onNativeUpdateDeclined: () => {
-      const snapshot = overlays.snapshot;
-      const campaign = snapshot.updateSchedule?.campaign;
-      const busy =
-        snapshot.updateRunning ||
-        snapshot.updateReconciliationPending ||
-        campaign?.state === "applying";
-      if ((snapshot.updateAvailable || campaign) && !busy && !snapshot.controlUiRefreshRequired) {
-        void overlays.runUpdate();
-      }
-    },
+    prepareNativeUpdateFallback: () => ({
+      isCurrent: overlays.captureUpdateTarget(),
+      run: () => {
+        const snapshot = overlays.snapshot;
+        const campaign = snapshot.updateSchedule?.campaign;
+        const busy =
+          snapshot.updateRunning ||
+          snapshot.updateReconciliationPending ||
+          campaign?.state === "applying";
+        if ((snapshot.updateAvailable || campaign) && !busy && !snapshot.controlUiRefreshRequired) {
+          void overlays.runUpdate();
+        }
+      },
+    }),
     shouldOpenInControlUiBrowser: () =>
       loadSettings().openLinksInControlUiBrowser === true &&
       isBrowserPanelAvailable(gateway.snapshot) &&
