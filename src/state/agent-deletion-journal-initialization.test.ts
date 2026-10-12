@@ -171,7 +171,7 @@ describe("agent deletion journal initialization", () => {
         }
         expect(() => operation.next()).toThrow(
           history === "deleted-during-integrity"
-            ? "Agent deletion journal changed"
+            ? "OpenClaw agent database is unavailable while agent main is deleted."
             : "Agent deletion journal missing",
         );
       } else {
