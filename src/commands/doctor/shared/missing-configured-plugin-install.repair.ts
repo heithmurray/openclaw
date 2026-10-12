@@ -35,6 +35,7 @@ import {
   hasRetainedManagedNpmInstallMarker,
   markRetainedManagedNpmInstall,
 } from "../../../plugins/managed-npm-retention.js";
+import { VERSION_BOUND_RUNTIME_PLUGIN_IDS } from "../../../plugins/official-runtime-plugins.js";
 import { isPayloadMissing } from "../../../plugins/payload-verification.js";
 import {
   withPluginLifecycleLease,
@@ -46,7 +47,6 @@ import {
   type PluginUpdateOutcome,
 } from "../../../plugins/update.js";
 import { resolveUserPath } from "../../../utils.js";
-import { VERSION_BOUND_RUNTIME_PLUGIN_IDS } from "./configured-runtime-plugin-installs.js";
 import {
   collectDownloadableInstallCandidates,
   collectUpdateDeferredPluginIds,
