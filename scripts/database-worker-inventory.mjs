@@ -2218,9 +2218,9 @@ const reviewedOperations = new Map([
     [
       {
         tier: "T3",
-        operations: ["repairOpenClawAgentDatabasePathAliases"],
+        operations: ["repairOpenClawAgentDatabasePaths"],
         evidence:
-          "src/commands/doctor-agent-database-paths.ts:24 under Doctor repair; registered health runner src/flows/doctor-health-contribution-runners.state.ts:122.",
+          "Only noteDoctorAgentDatabasePathHealth calls the repair, within its Doctor transaction. Entry: runStateIntegrityHealth in src/flows/doctor-health-contribution-runners.state.ts.",
       },
     ],
   ],
