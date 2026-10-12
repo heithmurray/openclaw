@@ -15,6 +15,7 @@ import {
   createAdmittedGatewayToolCallerIdentity,
   withGatewayToolCallerIdentity,
 } from "../agents/tools/gateway-caller-context.js";
+import { parseExecutionIdentityAdmissionToken } from "../audit/execution-identity-admission.js";
 import {
   createReplyOperation,
   replyRunRegistry,
@@ -51,6 +52,8 @@ import {
   bindGatewayContextResolver,
   clearGatewayContextResolver,
 } from "../plugins/runtime/gateway-request-scope.js";
+import { tableExists } from "../state/openclaw-state-db-schema-helpers.js";
+import type { DB as OpenClawStateDatabase } from "../state/openclaw-state-db.generated.js";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
 import { isCronReplyOperationWaitingForIdle } from "./active-jobs.js";
@@ -58,7 +61,6 @@ import { isCronExecutionIdle } from "./execution-idle.js";
 import { CronService } from "./service.js";
 import { createNoopLogger } from "./service.test-harness.js";
 import { runCronSessionTurn } from "./session-run.js";
-import * as executionBinding from "./store/run-receipt-execution-binding.js";
 import type { CronRunReceiptDatabase } from "./store/run-receipt-read.js";
 import { inspectActiveCronRunReceipt } from "./store/run-receipt-store.test-support.js";
 
@@ -330,9 +332,25 @@ it.for(["resume", "stop"] as const)(
         idleWait.resolve();
       }
     });
-    const bind = vi.spyOn(executionBinding, "bindCronRunReceiptExecution");
     const onReserved = vi.fn();
     let receiptAtWait: ReturnType<typeof inspectActiveCronRunReceipt>;
+    let admittedBinding: { context_id: string; execution_id: string } | undefined;
+    const readExecutionBinding = () => {
+      const database = openOpenClawStateDatabase().db;
+      if (!tableExists(database, "execution_owner_lifecycle_bindings")) {
+        return undefined;
+      }
+      return executeSqliteQueryTakeFirstSync(
+        database,
+        getNodeSqliteKysely<Pick<OpenClawStateDatabase, "execution_owner_lifecycle_bindings">>(
+          database,
+        )
+          .selectFrom("execution_owner_lifecycle_bindings")
+          .select(["context_id", "execution_id"])
+          .where("owner_kind", "=", "cron")
+          .where("owner_id", "=", expectDefined(receiptAtWait, "retained receipt").receiptId),
+      );
+    };
     runEmbeddedAgentMock.mockImplementation(async (params) => {
       expect(replyRunRegistry.get(SESSION)).toBe(scheduledOperation);
       expect(inspectActiveCronRunReceipt({ storePath, jobId: job.id })?.receiptId).toBe(
@@ -342,6 +360,9 @@ it.for(["resume", "stop"] as const)(
         params.preparedRunAdmission,
         "scheduled admission",
       ).admit("gateway", params.runId);
+      const identity = parseExecutionIdentityAdmissionToken(admitted.executionIdentityToken);
+      admittedBinding = { context_id: identity.contextId, execution_id: identity.executionId };
+      expect(readExecutionBinding()).toEqual(admittedBinding);
       await params.onExecutionStarted?.();
       expect(admitted.operationalRunInstance.runId).toBe(params.runId);
       expect(replyRunRegistry.get(SESSION)).toBe(scheduledOperation);
@@ -382,7 +403,7 @@ it.for(["resume", "stop"] as const)(
       ).toBe(true);
       expect(onReserved).toHaveBeenCalledOnce();
       expect(runEmbeddedAgentMock).not.toHaveBeenCalled();
-      expect(bind).not.toHaveBeenCalled();
+      expect(readExecutionBinding()).toBeUndefined();
       expect(peekSystemEventEntries(SESSION).some((event) => event.id === notice.id)).toBe(true);
       if (completion === "stop") {
         expect(replyRunRegistry.abort(SESSION)).toBe(true);
@@ -395,11 +416,12 @@ it.for(["resume", "stop"] as const)(
       if (completion === "stop") {
         expect(foreground?.abortSignal.aborted).toBe(false);
         expect(runEmbeddedAgentMock).not.toHaveBeenCalled();
-        expect(bind).not.toHaveBeenCalled();
+        expect(readExecutionBinding()).toBeUndefined();
       } else {
         expect(execution.getJob(job.id)?.state.lastRunStatus).toBe("ok");
         expect(runEmbeddedAgentMock).toHaveBeenCalledOnce();
-        expect(bind).toHaveBeenCalledOnce();
+        expect(admittedBinding).toBeDefined();
+        expect(readExecutionBinding()).toEqual(admittedBinding);
         expect(peekSystemEventEntries(SESSION).some((event) => event.id === notice.id)).toBe(false);
       }
     } finally {
@@ -407,7 +429,6 @@ it.for(["resume", "stop"] as const)(
       foreground?.complete();
       execution.stop();
       await Promise.allSettled([pending]);
-      bind.mockRestore();
       resetSystemEventsForTest();
     }
   },

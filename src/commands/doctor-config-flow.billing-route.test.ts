@@ -157,11 +157,13 @@ describe("Doctor model billing route migration", () => {
             model: `openai/${successor}`,
           });
         }
-        expect(ctx.cfg.agents?.defaults?.modelPolicy?.allow).toEqual(["openai/gpt-5.4"]);
+        expect(ctx.cfg.agents?.defaults?.modelPolicy?.allow).toEqual([
+          multiagent ? "openai/gpt-5.4" : "openai/gpt-5.6-terra",
+        ]);
         const expectedRoute = `openai/gpt-4o-mini via metered API-key profile openai:default -> openai/${successor} via subscription/OAuth profile openai:chatgpt-default.`;
         expect(ctx.updateWarnings).toEqual([
           expect.stringContaining(
-            "Billing route changed for agents.defaults.heartbeat.model (agent main): openai/gpt-4o-mini via metered API-key profile openai:default -> openai/gpt-5.4 via subscription/OAuth profile openai:chatgpt-default.",
+            "Billing route changed for agents.defaults.heartbeat.model (agent main): openai/gpt-4o-mini via metered API-key profile openai:default -> openai/gpt-5.6-terra via subscription/OAuth profile openai:chatgpt-default.",
           ),
           expect.stringContaining(
             `Billing route changed for agents.defaults.subagents.model (agent main): ${expectedRoute}`,

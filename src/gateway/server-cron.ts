@@ -1073,12 +1073,17 @@ export function buildGatewayCronService(params: {
   };
   const automationEpoch = claimSessionAutomationEpoch();
   const stopCron = cron.stop.bind(cron);
+  let cronStopRequested = false;
   const stopCronLifecycle = (preserveExitWatchers = false) => {
     legacyProjectionClosed = true;
     legacyProjectionRevision += 1;
     settleExitWatcherHandoff(false);
     try {
-      stopCron();
+      // Overlapping drains join the same shutdown without invalidating its queued retirements.
+      if (!cronStopRequested) {
+        cronStopRequested = true;
+        stopCron();
+      }
       if (preserveExitWatchers) {
         // A committed replacement owns these children; fence this scheduler
         // without terminating the adopted manager.
@@ -1118,6 +1123,8 @@ export function buildGatewayCronService(params: {
   };
   const startCron = cron.start.bind(cron);
   cron.start = async () => {
+    // A later stop must also fence a restart that is still waiting for its predecessors.
+    cronStopRequested = false;
     if (exitWatcherHandoffReady?.settled) {
       exitWatcherHandoffReady = { result: createDeferredCore<boolean>(), settled: false };
     }

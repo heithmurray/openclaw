@@ -62,7 +62,7 @@ describe("ordinary session event execution", () => {
     { runtime: "cli", outcome: "start" },
     { runtime: "cli", outcome: "retired" },
   ] as const)(
-    "keeps $runtime native binding behind final event admission ($outcome)",
+    "keeps $runtime native execution behind final event admission ($outcome)",
     async ({ runtime, outcome }, { signal }) => {
       const entered = createDeferred();
       const release = createDeferred();
@@ -80,7 +80,6 @@ describe("ordinary session event execution", () => {
         entered.resolve();
         await release.promise;
       };
-      const bind = vi.fn();
       const providerWork = vi.fn();
       const followupRun = createFollowupRun();
       followupRun.run.internalEventExecution = event;
@@ -88,7 +87,6 @@ describe("ordinary session event execution", () => {
         ...createScheduledAutomation(),
         executionIdentity: {
           ingress: { kind: "schedule", boundary: "scheduled-event-test", state: "present" },
-          onExecutionStarted: bind,
         },
       };
       if (runtime === "cli") {
@@ -126,7 +124,6 @@ describe("ordinary session event execution", () => {
         );
         expect(event.beforeStart).toHaveBeenCalledOnce();
         expect(scheduledRuns).toEqual([expect.any(String)]);
-        expect(bind).not.toHaveBeenCalled();
         expect(providerWork).not.toHaveBeenCalled();
         expect(event.onStarted).not.toHaveBeenCalled();
         expect(
@@ -143,7 +140,6 @@ describe("ordinary session event execution", () => {
         ).toHaveBeenCalledOnce();
         if (outcome === "start") {
           expect(result.outcome).toMatchObject({ kind: "settled", status: "ok" });
-          expect(bind).toHaveBeenCalledOnce();
           expect(providerWork).toHaveBeenCalledOnce();
           expect(event.onStarted).toHaveBeenCalledExactlyOnceWith(result.runId);
           expect(event.onTerminal).toHaveBeenCalledExactlyOnceWith(
@@ -152,7 +148,6 @@ describe("ordinary session event execution", () => {
             expectedCompletionEvidence(runtime),
           );
         } else {
-          expect(bind).not.toHaveBeenCalled();
           expect(providerWork).not.toHaveBeenCalled();
           expect(event.onStarted).not.toHaveBeenCalled();
           expect(event.onTerminal).toHaveBeenCalledExactlyOnceWith(

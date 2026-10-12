@@ -11,12 +11,7 @@ import * as operationAdmission from "../../infra/sqlite-worker-operation-admissi
 import { sqliteWorkerOwnerProbe as probe } from "../../infra/sqlite-worker-owner-probe.test-support.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import * as stateWorker from "../../state/openclaw-state-worker-store.js";
-import {
-  database,
-  placements,
-  SESSION_ID,
-  sessionTarget,
-} from "./worker-turn-launcher.test-support.js";
+import { placements, SESSION_ID, sessionTarget } from "./worker-turn-launcher.test-support.js";
 import { useRepositoryWorkspaceResultFixture } from "./workspace-result-repository.test-support.js";
 
 // mock-isolation: This fixture clones a local Git origin without GitHub credentials.

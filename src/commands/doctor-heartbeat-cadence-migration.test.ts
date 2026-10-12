@@ -680,7 +680,7 @@ describe("heartbeat cadence Doctor cutover", () => {
     "does not execute a pending migration through its %s owner after a public job edit",
     async (owner) => {
       const f = fixture();
-      seedLegacyMonitor(f);
+      seedLegacyMonitor(f, { state: { nextRunAtMs: NOW + 123 } });
       const job = (await ensureHeartbeatMonitorJobs(f.cfg, f.storePath, f.env)).get("main")!;
       const pending = readState(f)!;
       runOpenClawStateWriteTransaction(
