@@ -34,6 +34,7 @@ import {
   ensureSessionPendingInputsSchema,
 } from "../../state/openclaw-agent-pending-inputs-schema.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import { setRuntimeConfigSnapshot } from "../runtime-snapshot.js";
 import {
   listSessionPendingInputs,
   stageSessionPendingInput,
@@ -103,6 +104,7 @@ it("accepts supplied legacy completion callbacks without falling back from async
 });
 
 function createFixture() {
+  setRuntimeConfigSnapshot({});
   const database = openOpenClawAgentDatabase({ agentId: scope.agentId });
   writeSessionEntry(database, scope.sessionKey, { sessionId: scope.sessionId, updatedAt: 1 });
   return {
