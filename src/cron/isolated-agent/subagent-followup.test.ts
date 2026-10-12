@@ -444,11 +444,9 @@ describe("waitForDescendantSubagentSummary", () => {
     "<b>NO_REPLY</b>",
     "NO_REPLY child completed the scheduled reminder",
     '{"action":"NO_REPLY","message":"child completed the scheduled reminder"}',
-  ])(
-    "preserves literal synthesis that also contains a silent token: %s",
-    async (synthesis) => {
-      vi.mocked(listDescendantRunsForRequester).mockResolvedValue([]);
-      vi.mocked(readLatestAssistantReply).mockResolvedValue(synthesis);
+  ])("preserves literal synthesis that also contains a silent token: %s", async (synthesis) => {
+    vi.mocked(listDescendantRunsForRequester).mockResolvedValue([]);
+    vi.mocked(readLatestAssistantReply).mockResolvedValue(synthesis);
 
     const result = await waitForDescendantSubagentSummary({
       sessionKey: "cron-session",
