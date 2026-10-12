@@ -6,6 +6,7 @@ import {
 } from "../config/sessions/session-accessor.sqlite-entry-cache.js";
 import { readDatabasePathIdentitySync } from "../infra/sqlite-worker-identity.js";
 import { errorShapeFromError } from "./error-shape.js";
+import { isSessionTargetMethod } from "./session-method-policy.js";
 import { SessionMutationAuthorizationChangedError } from "./session-mutation-authorization-error.js";
 import { resolveRequestedSessionAgentId } from "./session-request-agent.js";
 import { withReadySessionRows } from "./session-row-prepared-read.js";
@@ -78,6 +79,9 @@ export async function resolveSessionMutationAuthorizationAsync(
         ...resolveDirectSessionTargets(params.method, params.requestParams),
         ...(resolveSessionMutationTargets(params) ?? []),
       ];
+  if (targets.length === 0 && !params.sessionScope && !isSessionTargetMethod(params.method)) {
+    return resolveSessionMutationAuthorization(params);
+  }
   const cfg = params.context.getRuntimeConfig();
   const preparedProfiles = await prepareSessionSharingProfiles(params.client);
   const reads: Array<{ release: () => void }> = [];
