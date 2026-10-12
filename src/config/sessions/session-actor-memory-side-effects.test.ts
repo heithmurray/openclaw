@@ -148,8 +148,14 @@ describe("memory session side-data consumers", () => {
     expect(first.messages).toMatchObject([
       { role: "custom", display: false, content: expect.stringContaining("progress: first") },
     ]);
-    first.messages[0]!.content = "mutated";
-    expect((await read()).messages[0]!.content).toContain("progress: first");
+    const message = first.messages[0];
+    if (message?.role !== "custom") {
+      throw new Error("Expected recorded automation context");
+    }
+    message.content = "mutated";
+    expect((await read()).messages).toMatchObject([
+      { content: expect.stringContaining("progress: first") },
+    ]);
     await record("run-two", "done: replacement");
     expect((await read()).messages).toMatchObject([
       { content: expect.stringContaining("progress: first") },

@@ -1,16 +1,25 @@
 import { expect, it, vi } from "vitest";
-import { createDeferred } from "../../test/helpers/promise.js";
+import {
+  awaitGateBeforeSettlement,
+  createDeferred,
+  withinTest,
+} from "../../test/helpers/promise.js";
 import { AsyncWorkScope, getAsyncWorkSignal } from "../shared/async-work-scope.js";
 import { runOpenClawStateWriteTransaction } from "../state/openclaw-state-db.js";
 import {
   createGatewaySchedulerClock,
   createTestGatewayScheduler,
 } from "../test-utils/gateway-scheduler-clock.js";
-import { CronService } from "./service.js";
-import { setupCronServiceSuite } from "./service.test-harness.js";
+import {
+  createCronServiceWithStateForTest,
+  setupCronServiceSuite,
+  writeCronStoreSnapshot,
+} from "./service.test-harness.js";
 import type { CronEvent, CronServiceDeps } from "./service/state.js";
+import { onTimer } from "./service/timer.test-support.js";
 import { publishCronJobsStoreMutation } from "./store.js";
 import { cronStoreKey } from "./store/key.js";
+import { loadCronStoreFromDatabase } from "./store/load.kernel.js";
 import { saveCronStoreInDatabase } from "./store/save.kernel.js";
 import type { CronJob } from "./types.js";
 
@@ -22,7 +31,7 @@ async function createFixture(runSchedulerOwned?: CronServiceDeps["runSchedulerOw
   const scheduler = createTestGatewayScheduler(clock.clock);
   const events: CronEvent[] = [];
   const runCommandJob = vi.fn(async () => ({ status: "ok" as const }));
-  const cron = new CronService({
+  const { cron, state } = createCronServiceWithStateForTest({
     scheduler,
     storePath,
     cronEnabled: true,
@@ -60,30 +69,32 @@ async function createFixture(runSchedulerOwned?: CronServiceDeps["runSchedulerOw
       }
     });
   }
-  return { cron, clock, scheduler, job, events, runCommandJob, commitJob, storePath };
+  return { cron, state, clock, scheduler, job, events, runCommandJob, commitJob, storePath };
 }
 
 it.each(["local publication", "foreign commit readback"] as const)(
   "arms an empty scheduler after %s without restarting",
   async (mode) => {
     const fixture = await createFixture();
-    const { cron, clock, scheduler, job, events, runCommandJob, commitJob } = fixture;
+    const { cron, state, clock, scheduler, job, events, runCommandJob, commitJob } = fixture;
     try {
       await cron.start();
-      expect(clock.armedAtMs).toBeNull();
+      expect((await cron.status()).nextWakeAtMs).toBeNull();
       commitJob(mode === "local publication");
       if (mode === "local publication") {
-        // A normal status read joins the queued publication; it cannot arm the timer itself.
+        // A status read joins the queued publication; the worker owns the timer.
         await cron.status();
       } else {
         await expect(cron.readJob(job.id)).resolves.toMatchObject({ id: job.id });
       }
+      expect((await cron.status()).nextWakeAtMs).toBe(job.state.nextRunAtMs);
       expect(events.filter((event) => event.action === "added")).toEqual([
         expect.objectContaining({ jobId: job.id, nextRunAtMs: job.state.nextRunAtMs }),
       ]);
       await cron.readJob(job.id);
       expect(events.filter((event) => event.action === "added")).toHaveLength(1);
-      await clock.advanceBy(30_000);
+      clock.setTime(clock.clock.now() + 30_000);
+      await onTimer(state);
       expect(runCommandJob).toHaveBeenCalledTimes(1);
       expect(events).toContainEqual(
         expect.objectContaining({ jobId: job.id, action: "finished", status: "ok" }),
@@ -96,25 +107,27 @@ it.each(["local publication", "foreign commit readback"] as const)(
 );
 
 it("withholds rolled-back provisioning and fences queued publication across stop", async () => {
-  const { cron, clock, scheduler, events, runCommandJob, commitJob, storePath } =
+  const { cron, state, clock, scheduler, events, runCommandJob, commitJob, storePath } =
     await createFixture();
   try {
     await cron.start();
     expect(() => commitJob(true, true)).toThrow("injected provisioning rollback");
     expect((await cron.status()).jobs).toBe(0);
-    expect(clock.armedAtMs).toBeNull();
+    expect((await cron.status()).nextWakeAtMs).toBeNull();
     expect(events).toEqual([]);
 
     commitJob(true);
     cron.stop();
     await cron.status();
-    expect(clock.armedAtMs).toBeNull();
+    await cron.waitForIdle();
+    expect(runCommandJob).not.toHaveBeenCalled();
     expect(events).toEqual([]);
 
     await cron.start();
     publishCronJobsStoreMutation(storePath);
     await cron.status();
-    await clock.advanceBy(30_000);
+    clock.setTime(clock.clock.now() + 30_000);
+    await onTimer(state);
     expect(runCommandJob).toHaveBeenCalledTimes(1);
   } finally {
     cron.stop();
@@ -163,5 +176,80 @@ it("drains accepted provisioning work outside the publisher's temporary scope", 
     await cron.waitForIdle();
     await scheduler.stop();
     await publisher.drain();
+  }
+});
+
+it("reconciles non-timed jobs provisioned while startup execution is pending", async ({
+  signal,
+}) => {
+  const { cron, state, scheduler, job, events, runCommandJob, storePath } = await createFixture();
+  const entered = createDeferred();
+  const release = createDeferred();
+  const startup: CronJob = {
+    ...job,
+    id: "startup-command",
+    name: "Startup command",
+    deleteAfterRun: false,
+    schedule: { kind: "at", at: new Date(scheduler.now() - 1).toISOString() },
+    state: { nextRunAtMs: scheduler.now() - 1 },
+  };
+  const provisioned: CronJob = {
+    ...job,
+    id: "provisioned-on-exit",
+    name: "Provisioned exit watcher",
+    schedule: { kind: "on-exit", command: "fixture-exit-command" },
+    state: {},
+  };
+  await writeCronStoreSnapshot({ storePath, jobs: [startup] });
+  const reconciliation = vi.fn(async () => {
+    // Watcher reconciliation reads through the facade, outside its mutation lock.
+    return (await cron.list({ includeDisabled: true })).map((entry) => entry.id);
+  });
+  state.deps.onProvisionedJobsReloaded = async () => {
+    await reconciliation();
+  };
+  runCommandJob.mockImplementationOnce(async () => {
+    entered.resolve();
+    await release.promise;
+    return { status: "ok" as const };
+  });
+  const starting = cron.start();
+  try {
+    await withinTest(
+      awaitGateBeforeSettlement(
+        entered.promise,
+        starting,
+        "Startup did not execute its due command",
+      ),
+      signal,
+    );
+    runOpenClawStateWriteTransaction((database) => {
+      const storeKey = cronStoreKey(storePath);
+      const current = loadCronStoreFromDatabase(database.db, storeKey).store;
+      saveCronStoreInDatabase(database, storeKey, {
+        version: 1,
+        jobs: [...current.jobs, provisioned],
+      });
+      publishCronJobsStoreMutation(storePath, database.db);
+    });
+    expect(reconciliation).not.toHaveBeenCalled();
+    release.resolve();
+    await withinTest(starting, signal);
+    expect(events.filter((event) => event.action === "added")).toEqual([
+      expect.objectContaining({
+        jobId: provisioned.id,
+        job: expect.objectContaining({ id: provisioned.id, schedule: provisioned.schedule }),
+      }),
+    ]);
+    expect(reconciliation).toHaveBeenCalledOnce();
+    await expect(reconciliation.mock.results[0]?.value).resolves.toContain(provisioned.id);
+    expect(cron.getJob(provisioned.id)).toMatchObject(provisioned);
+    expect(runCommandJob).toHaveBeenCalledOnce();
+  } finally {
+    release.resolve();
+    cron.stop();
+    await starting;
+    await cron.waitForIdle();
+    await scheduler.stop();
   }
 });

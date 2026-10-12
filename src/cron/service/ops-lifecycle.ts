@@ -13,11 +13,11 @@ const mutationSubscriptions = new WeakMap<CronServiceState, () => void>();
 export async function reloadProvisionedCronJobs(
   state: CronServiceState,
   generation = state.lifecycleGeneration,
+  previousIds = new Set(state.store?.jobs.map((job) => job.id)),
 ): Promise<void> {
   if (state.stopped || state.lifecycleGeneration !== generation || !state.schedulerStarted) {
     return;
   }
-  const previousIds = new Set(state.store?.jobs.map((job) => job.id));
   await ensureLoaded(state, { forceReload: true });
   if (state.stopped || state.lifecycleGeneration !== generation) {
     return;
@@ -66,9 +66,14 @@ export async function start(state: CronServiceState): Promise<void> {
     state.schedulerScope = state.deps.scheduler.scope();
   }
   state.stopped = false;
+  const startupJobIds = new Set<string>();
   const skipJobIds = await locked(state, async () => {
     await ensureLoaded(state);
-    return await recoverCronRuns(state);
+    const recovered = await recoverCronRuns(state);
+    for (const job of state.store?.jobs ?? []) {
+      startupJobIds.add(job.id);
+    }
+    return recovered;
   });
   if (state.stopped || state.lifecycleGeneration !== generation) {
     return;
@@ -79,7 +84,8 @@ export async function start(state: CronServiceState): Promise<void> {
     return;
   }
   subscribeStoreMutations(state);
-  await locked(state, () => reloadProvisionedCronJobs(state, generation));
+  // Startup requests can await execution while provisioning publishes new jobs.
+  await locked(state, () => reloadProvisionedCronJobs(state, generation, startupJobIds));
   if (state.stopped || state.lifecycleGeneration !== generation) {
     return;
   }
