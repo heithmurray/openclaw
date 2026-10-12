@@ -3542,7 +3542,11 @@ at transaction and commit admission. Committed progress and identity notificatio
 precede the reset callback, and accepted callbacks settle inside the physical
 writer FIFO. Lost replies use the acknowledged candidate without repeating the
 builder or SQL; uncertain outcomes remain fenced. Bundled reply initialization
-uses a typed upsert descriptor while its projection and opaque transaction
+uses a typed upsert descriptor and reuses the lifecycle planner's selected-row
+snapshot for ordinary commits, including declared related rows and the stored
+model parent. Parent-fork preparation and creation-authority binding retain their
+earlier snapshot before effects. The existing lifecycle commit checks its
+prepared row and preserves intervening same-session metadata. Opaque transaction
 callbacks retain their existing owner. Native-binding settlement and incognito
 activation remain separate cutovers. These changes require no schema, durability,
 retention, configuration, or update migration.
@@ -3847,6 +3851,12 @@ an in-process write receipt changes. Sibling handles and workers share that rece
 blocked or failed checkpoints keep retrying when a reader may have released.
 Connections without a known write receipt continue checkpointing on every tick.
 Page reclamation and blocking checkpoint modes keep their zero-timeout scope.
+While an offline maintenance scope retains a shared-state worker, its scheduled
+WAL work pauses so Doctor and update-recovery captures keep stable source bytes.
+Explicitly admitted maintenance remains available. The final maintenance client
+release resumes the same worker's normal ten-second checkpoint cadence; overlapping
+maintenance clients keep it paused until all release.
+
 The Gateway run loop retains the shared-state database cache, actor owner, and
 SQLite worker broker until the final lifecycle outcome is recorded. Orderly
 retirement then joins the writer's final checkpoint before closing the host
@@ -6362,7 +6372,10 @@ Replay eligibility and events share one statement, including complete empty
 replays. Plugin-state keyed lookup and lookupMany reuse the same bounded receipt
 postimages and tombstones as observe when every key is resident. Cold batches
 still read through the worker; expiry and committed native or worker writes
-invalidate or replace cached values. Returned JSON remains caller-owned.
+invalidate or replace cached values. Publication identities use SQLite's text-key
+normalization, so accepted lone UTF-16 surrogates and their replacement-character
+aliases share invalidation. Public comparison-token scopes remain unchanged.
+Returned JSON remains caller-owned.
 
 Namespace lists share that cache owner with a 64-namespace, 8 MiB bound. A
 committed write invalidates its namespace, unknown settlement invalidates the

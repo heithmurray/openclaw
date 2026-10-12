@@ -54,6 +54,64 @@ function observe() {
 }
 
 describe("plugin state committed facts", () => {
+  it("shares committed facts and invalidation across SQLite text-key aliases", async () => {
+    await withOpenClawTestState({ label: "plugin-state-key-aliases" }, async ({ env }) => {
+      const store = createPluginStateKeyedStore<number>("receipt-test", {
+        namespace: "aliases",
+        maxEntries: 10,
+        env,
+      });
+      for (const rawKey of ["high-\ud800", "low-\udc00"]) {
+        const normalizedKey = rawKey.startsWith("high") ? "high-\ufffd" : "low-\ufffd";
+        await store.register(rawKey, 1);
+        const raw = await capturePluginStateReadDependencies(() => store.observe(rawKey));
+        const normalized = await capturePluginStateReadDependencies(() =>
+          store.observe(normalizedKey),
+        );
+        const unrelated = await capturePluginStateReadDependencies(() => store.observe("other"));
+        const read = async (expected: number | undefined) => {
+          for (const key of [rawKey, normalizedKey]) {
+            expect(await store.lookup(key)).toBe(expected);
+            expect((await store.observe(key)).value).toBe(expected);
+          }
+          expect(await store.lookupMany([rawKey, normalizedKey])).toEqual([
+            { ok: true, value: expected },
+            { ok: true, value: expected },
+          ]);
+        };
+        try {
+          expect(raw.value.value).toBe(1);
+          expect(normalized.value.value).toBe(1);
+          await store.register(rawKey, 2);
+          await read(2);
+          expect(raw.isCurrent()).toBe(false);
+          expect(normalized.isCurrent()).toBe(false);
+          expect(unrelated.isCurrent()).toBe(true);
+          await store.delete(normalizedKey);
+          await read(undefined);
+          expect(await store.entries()).toEqual([]);
+          await store.register(normalizedKey, 3);
+          await read(3);
+          const observation = await store.observe(rawKey);
+          const alias = await store.observe(normalizedKey);
+          expect(alias.comparison).not.toBe(observation.comparison);
+          expect(
+            await store.compareAndApply(rawKey, observation.comparison, {
+              operation: "update",
+              action: "keep",
+            }),
+          ).toEqual({ status: "unchanged" });
+          await store.delete(rawKey);
+          await read(undefined);
+        } finally {
+          raw.release();
+          normalized.release();
+          unrelated.release();
+        }
+        expect(raw.isCurrent()).toBe(false);
+      }
+    });
+  });
   it("reuses namespace lists until a committed write changes their rows", async () => {
     await withOpenClawTestState(
       { label: "plugin-state-namespace-read-receipts" },
