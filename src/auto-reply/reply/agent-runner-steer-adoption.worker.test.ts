@@ -36,6 +36,11 @@ it("adopts active steering through prepared policy without caller-thread SQL", a
     setRuntimeConfigSnapshot({});
     const key = "agent:main:active-worker-steering";
     const policyKey = "agent:main:active-worker-policy";
+    const config = {
+      agents: { defaults: { sandbox: { mode: "all" as const } }, entries: { main: {} } },
+      tools: { sandbox: { tools: { deny: ["exec"] } } },
+    };
+    setRuntimeConfigSnapshot(config);
     await upsertSessionEntryCore(
       { agentId: "main", sessionKey: policyKey },
       { sessionId: "policy", updatedAt: 1, sandboxMode: "off" },
@@ -50,10 +55,7 @@ it("adopts active steering through prepared policy without caller-thread SQL", a
       sessionKey: key,
       runtimePolicySessionKey: policyKey,
       senderIsOwner: true,
-      config: {
-        agents: { defaults: { sandbox: { mode: "all" } }, entries: { main: {} } },
-        tools: { sandbox: { tools: { deny: ["exec"] } } },
-      },
+      config,
     });
     const operation = createTestReplyOperation({ sessionKey: key, sessionId: run.run.sessionId });
     await operation.bindToolAuthoritySnapshotAsync(

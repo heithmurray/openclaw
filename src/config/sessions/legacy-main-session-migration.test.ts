@@ -34,8 +34,8 @@ import { runSessionStartupMigration } from "./startup-migration.js";
 
 const { tempDirs, createFixture } = setupLegacyMainSessionMigrationTests();
 afterEach(() => {
-  clearRuntimeConfigSnapshot();
   vi.restoreAllMocks();
+  clearRuntimeConfigSnapshot();
 });
 
 type LegacyMainSessionMigrationOutcomeKind = Awaited<

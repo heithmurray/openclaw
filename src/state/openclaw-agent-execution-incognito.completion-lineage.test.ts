@@ -2,7 +2,10 @@ import "../test-utils/prepare-compiled-subprocesses.js";
 import assert from "node:assert/strict";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
-import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.sqlite-entry.js";
 import { withIncognitoSessionActor } from "../config/sessions/session-incognito-binding.js";
 import { resolvePhysicalSessionStorePath } from "../config/sessions/session-store-path.js";
@@ -36,6 +39,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await actor?.close();
+  clearRuntimeConfigSnapshot();
 });
 
 it("keeps durable completion lineage in its incognito requester's captured root", async () => {

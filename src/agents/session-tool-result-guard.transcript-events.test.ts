@@ -21,6 +21,7 @@ import {
   persistCompactionBoundaryWithSessionEntrySync,
 } from "../config/sessions/session-accessor.js";
 import { applyAssistantDeliveryDirectives } from "../config/sessions/transcript-assistant-delivery.js";
+import type { OpenClawConfig } from "../config/types.js";
 import { projectInFlightRunSnapshot } from "../gateway/chat-inflight-snapshot.js";
 import { createAgentEventTestHarness } from "../gateway/server-chat.agent-events.test-harness.js";
 import { subscribeAgentEvents } from "../gateway/server-chat.agent-events.test-helpers.js";
@@ -89,8 +90,12 @@ function collectUpdates() {
   return updates;
 }
 
-async function openPersistedSessionManager(lifecycleRevision?: string) {
+async function openPersistedSessionManager(
+  lifecycleRevision?: string,
+  config: OpenClawConfig = {},
+) {
   const root = tempDirs.make("openclaw-transcript-events-");
+  setRuntimeConfigSnapshot(config);
   const sessionId = `session-${fixtureId++}`;
   const target = {
     agentId: "main",
@@ -260,11 +265,14 @@ describe("guardSessionManager transcript updates", () => {
   });
 
   it("preserves source text when a concurrent append forces a retry", async () => {
-    const { root, sessionManager: manager, target } = await openPersistedSessionManager();
+    const config = { logging: { redactPatterns: [String.raw`/opaque\(([^)]+)\)/g`] } };
+    const {
+      root,
+      sessionManager: manager,
+      target,
+    } = await openPersistedSessionManager(undefined, config);
     const baseId = manager.appendMessage(makeUserMessage("Compute a value", 1));
-    installSessionToolResultGuard(manager, {
-      config: { logging: { redactPatterns: [String.raw`/opaque\(([^)]+)\)/g`] } },
-    });
+    installSessionToolResultGuard(manager, { config });
     const toolCall = codeCall("retry-source");
     const emitted = makeAgentAssistantMessage({
       content: [{ type: "text", text: "opaque(abcdefghijklmnopqrst)" }, toolCall],
@@ -428,7 +436,11 @@ describe("guardSessionManager transcript updates", () => {
   );
 
   it("preserves text with one fresh SQLite admission across replay despite logging patterns", async () => {
-    const { root, target, sessionEntry, sessionManager } = await openPersistedSessionManager();
+    const config = { logging: { redactPatterns: [String.raw`private-note=([^\s]+)`] } };
+    const { root, target, sessionEntry, sessionManager } = await openPersistedSessionManager(
+      undefined,
+      config,
+    );
     const message = {
       role: "user" as const,
       content: "private-note=fixture-only-redaction-value",
@@ -453,7 +465,7 @@ describe("guardSessionManager transcript updates", () => {
     const guarded = guardSessionManager(sessionManager, {
       agentId: target.agentId,
       sessionKey: target.sessionKey,
-      config: { logging: { redactPatterns: [String.raw`private-note=([^\s]+)`] } },
+      config,
       preparedUserTurnMessage: message,
       preparedUserTurnTranscriptRecorder: recorder,
     });

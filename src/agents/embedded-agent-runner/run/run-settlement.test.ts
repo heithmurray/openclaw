@@ -14,7 +14,8 @@ import type {
 } from "./internal-params.js";
 
 async function createSettlementFixture(state: OpenClawTestState) {
-  setRuntimeConfigSnapshot({});
+  const config = {};
+  setRuntimeConfigSnapshot(config);
   const { loadSessionEntry, replaceSessionEntry } =
     await import("../../../config/sessions/session-accessor.js");
   const {
@@ -41,7 +42,12 @@ async function createSettlementFixture(state: OpenClawTestState) {
     updatedAt: 1,
   });
   const runId = randomUUID();
-  const admission = prepareSystemAgentRunAdmission({}, runId, target.agentId, "settlement-test");
+  const admission = prepareSystemAgentRunAdmission(
+    config,
+    runId,
+    target.agentId,
+    "settlement-test",
+  );
   const controller = new AbortController();
   const unsubscriptions: Array<() => void> = [];
   const close = () => {

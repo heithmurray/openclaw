@@ -152,8 +152,10 @@ it.each([
 );
 
 it("preserves already-produced text after its turn is aborted", async () => {
+  const cfg: OpenClawConfig = {};
+  setRuntimeConfigSnapshot(cfg);
   const scope = await captureWebchatReplyMediaScope({
-    cfg: {},
+    cfg,
     agentId: "main",
     sessionKey: SESSION_KEY,
   });

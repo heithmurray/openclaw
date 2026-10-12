@@ -3,16 +3,16 @@ import { DatabaseSync } from "node:sqlite";
 import { withTempHome } from "openclaw/plugin-sdk/test-env";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config.js";
-import { resetConfigRuntimeState, setRuntimeConfigSnapshot } from "../runtime-snapshot.js";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../runtime-snapshot.js";
 import { replaceSessionEntry } from "./session-accessor.js";
 import {
   resolveExistingAgentSessionStoreTargetsReadOnlyResult,
   type SessionStoreTargetsReadCache,
 } from "./targets-read-availability.worker.js";
 
-describe("session store availability", () => {
-  afterEach(() => resetConfigRuntimeState());
+afterEach(() => clearRuntimeConfigSnapshot());
 
+describe("session store availability", () => {
   it("uses admitted per-agent availability without probing session rows", async () => {
     await withTempHome(async (home) => {
       const env = { ...process.env, OPENCLAW_STATE_DIR: path.join(home, ".openclaw") };

@@ -85,9 +85,7 @@ describe("first transcript turn initialization", () => {
       ...options,
     });
 
-  beforeEach(() => {
-    setRuntimeConfigSnapshot({});
-  });
+  beforeEach(() => setRuntimeConfigSnapshot({ session: { store: fixture.storePath() } }));
   afterEach(() => {
     vi.restoreAllMocks();
     closeOpenClawAgentDatabasesForTest();

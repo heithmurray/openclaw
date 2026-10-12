@@ -61,6 +61,11 @@ live commit authority remain unchanged; no schema or update migration is needed.
 WebSocket hello prepares session membership only when the resident presence
 roster includes watched sessions. An idle roster needs no session rows; active
 watches retain the existing membership preparation and visibility filtering.
+Profile authority preparation reuses the resident catalog's role, display,
+GitHub login, and merge aliases. Committed profile writes update these facts
+before subsequent connections read them; existing authority revocation still
+applies at access boundaries. Standalone reads and requests for the full profile
+continue through the shared-state read worker.
 
 Runtime database access belongs in workers. The Gateway main thread owns live
 projections, caches, and caller authority; it awaits prepared facts and installs
@@ -1322,6 +1327,14 @@ authority. Pre- and post-hook checkpoints remain separate when the hook is an
 external effect. Actor-bound acceptance does not hold a legacy writer reservation
 around its commands. Unbound native and SDK callers retain their compatibility
 adapters, whose committed writes invalidate actor facts.
+
+Restart-safe chat transcript acceptance also records user interaction activity
+before ACK. Reply initialization reuses that committed activity for the same
+existing session instead of refreshing its timestamps again. Initialization still
+persists changed routing or metadata, retains newer in-process activity, and gives
+new or reset sessions their own timestamps. Progress-card refreshes do not record
+user interaction activity. A failure during post-ACK preparation therefore leaves
+the accepted input and its activity durable together.
 
 Input staging, transcript acceptance, and run adoption rebase once on an explicit
 stale-version refusal, including when deferred participant recording commits
@@ -3852,6 +3865,12 @@ an in-process write receipt changes. Sibling handles and workers share that rece
 blocked or failed checkpoints keep retrying when a reader may have released.
 Connections without a known write receipt continue checkpointing on every tick.
 Page reclamation and blocking checkpoint modes keep their zero-timeout scope.
+While an offline maintenance scope retains a shared-state worker, its scheduled
+WAL work pauses so Doctor and update-recovery captures keep stable source bytes.
+Explicitly admitted maintenance remains available. The final maintenance client
+release resumes the same worker's normal ten-second checkpoint cadence; overlapping
+maintenance clients keep it paused until all release.
+
 The Gateway run loop retains the shared-state database cache, actor owner, and
 SQLite worker broker until the final lifecycle outcome is recorded. Orderly
 retirement then joins the writer's final checkpoint before closing the host

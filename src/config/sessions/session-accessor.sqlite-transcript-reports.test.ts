@@ -63,6 +63,7 @@ const assistant = {
 const selected = { customType: "status", content: body, details: { selected: true } };
 
 async function seedReports(stopReason: AssistantMessage["stopReason"] = assistant.stopReason) {
+  setRuntimeConfigSnapshot({});
   await upsertSessionEntryCore(scope, { sessionId: scope.sessionId, updatedAt: 1 });
   await replaceTranscriptEvents(scope, [
     { type: "session", id: scope.sessionId, version: CURRENT_SESSION_VERSION },

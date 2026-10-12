@@ -106,7 +106,7 @@ describe("accepted input custody", () => {
       );
 
   beforeEach(async () => {
-    setRuntimeConfigSnapshot({});
+    setRuntimeConfigSnapshot({ session: { store: fixture.storePath() } });
     await upsertSessionEntryCore(scope(), { sessionId, updatedAt: 1 });
   });
   afterEach(async () => {

@@ -53,6 +53,8 @@ function enforceSqliteVariableLimit(
 
 describe("SQLite transcript history events", () => {
   const scope = useHistoryEventScope();
+  beforeEach(() => setRuntimeConfigSnapshot({}));
+  afterEach(() => clearRuntimeConfigSnapshot());
 
   beforeEach(() => {
     setRuntimeConfigSnapshot({});

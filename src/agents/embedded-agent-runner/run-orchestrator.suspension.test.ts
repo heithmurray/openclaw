@@ -468,6 +468,7 @@ describe("embedded run detached session metadata", () => {
     async (trigger, existing, owner) => {
       const { params, scope, stateDir, database } = await createRun("research", "detached");
       params.config.agents!.defaults!.compaction = { mode: "default", keepRecentTokens: 1 };
+      setRuntimeConfigSnapshot(params.config);
       const manager = params.sessionManager;
       manager.appendMessage(makeUserMessage("Remember the memory-only project.", 1));
       manager.appendMessage(

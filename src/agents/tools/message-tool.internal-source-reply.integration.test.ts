@@ -3,12 +3,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { asOptionalRecord, isRecord } from "@openclaw/normalization-core/record-coerce";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { getReplyPayloadMetadata } from "../../auto-reply/reply-payload.js";
 import { buildReplyPayloads } from "../../auto-reply/reply/agent-runner-payloads.js";
 import { mirrorDeliveredReplyToTranscript } from "../../auto-reply/reply/dispatch-from-config.transcript.js";
 import {
-  resetConfigRuntimeState,
+  clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "../../config/runtime-snapshot.js";
 import {
@@ -54,7 +54,7 @@ const INTERNAL_SOURCE_CATALOG = {
 function createCurrentSourceMessageTool(
   params: NonNullable<Parameters<typeof createMessageTool>[0]> = {},
 ) {
-  return createMessageTool({
+  const options: NonNullable<Parameters<typeof createMessageTool>[0]> = {
     config: { agents: { entries: { main: {} } } },
     preparedMessageToolCatalog: INTERNAL_SOURCE_CATALOG,
     currentChannelProvider: "webchat",
@@ -70,16 +70,19 @@ function createCurrentSourceMessageTool(
       hadUnresolvedTargets: false,
     }),
     ...params,
-  });
+  };
+  setRuntimeConfigSnapshot(options.config ?? {});
+  return createMessageTool(options);
 }
 
 const TINY_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=";
 
-describe("WebChat message tool internal source reply", () => {
-  beforeEach(() => setRuntimeConfigSnapshot({}));
-  afterEach(() => resetConfigRuntimeState());
+afterEach(() => {
+  clearRuntimeConfigSnapshot();
+});
 
+describe("WebChat message tool internal source reply", () => {
   it("refuses an internal-source transcript commit after its real cron admission closes", async () => {
     await withOpenClawTestState(
       { layout: "state-only", prefix: "cron-source-commit-" },
@@ -89,13 +92,15 @@ describe("WebChat message tool internal source reply", () => {
         const sessionId = "cron-source-commit-session";
         const storePath = path.join(state.stateDir, "agents", "main", "sessions", "sessions.json");
         const scope = { agentId: "main", sessionKey, sessionId, storePath };
+        const cfg = {
+          agents: { entries: { main: {} }, defaults: { workspace: state.workspaceDir } },
+          tools: { allow: ["message"] },
+        };
+        setRuntimeConfigSnapshot(cfg);
         await replaceSessionEntry(scope, { sessionId, updatedAt: 1 });
         await withCronMessageRun(
           {
-            cfg: {
-              agents: { entries: { main: {} }, defaults: { workspace: state.workspaceDir } },
-              tools: { allow: ["message"] },
-            },
+            cfg,
             storePath: state.statePath("cron", "internal-source.json"),
             sessionKey,
             sessionId,
@@ -159,14 +164,16 @@ describe("WebChat message tool internal source reply", () => {
         const sessionId = "cron-source-media-session";
         const storePath = path.join(state.stateDir, "agents", "main", "sessions", "sessions.json");
         const scope = { agentId: "main", sessionKey, sessionId, storePath };
+        const cfg = {
+          agents: { entries: { main: {} }, defaults: { workspace: state.workspaceDir } },
+          tools: { allow: ["message"] },
+        };
+        setRuntimeConfigSnapshot(cfg);
         await fs.mkdir(state.workspaceDir, { recursive: true });
         await replaceSessionEntry(scope, { sessionId, updatedAt: 1 });
         await withCronMessageRun(
           {
-            cfg: {
-              agents: { entries: { main: {} }, defaults: { workspace: state.workspaceDir } },
-              tools: { allow: ["message"] },
-            },
+            cfg,
             storePath: state.statePath("cron", "internal-source-media.json"),
             sessionKey,
             sessionId,
@@ -648,6 +655,10 @@ describe("WebChat message tool internal source reply", () => {
             "sessions.json",
           );
           const scope = { agentId: "main", sessionKey, sessionId, storePath };
+          const cfg = {
+            agents: { entries: { main: { workspace: state.workspaceDir } } },
+          };
+          setRuntimeConfigSnapshot(cfg);
           const imagePath = path.join(state.workspaceDir, "proof.png");
           await fs.mkdir(state.workspaceDir, { recursive: true });
           await fs.writeFile(imagePath, Buffer.from(TINY_PNG_BASE64, "base64"));
@@ -684,9 +695,7 @@ describe("WebChat message tool internal source reply", () => {
           try {
             const persist = () =>
               persistInternalSourceReply({
-                cfg: {
-                  agents: { entries: { main: { workspace: state.workspaceDir } } },
-                },
+                cfg,
                 sessionKey,
                 expectedSessionId: sessionId,
                 agentId: "main",

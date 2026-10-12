@@ -1,5 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { peekSystemEventEntries, resetSystemEventsForTest } from "../infra/system-events.js";
 import {
@@ -27,15 +30,15 @@ import {
 } from "./session-state-events.test-support.js";
 import { enqueueSessionStateNotice } from "./session-state-notices.js";
 
-beforeEach(() => {
-  setRuntimeConfigSnapshot({});
+afterEach(async () => {
+  await cleanupSessionStateTestState();
+  clearRuntimeConfigSnapshot();
 });
-
-afterEach(cleanupSessionStateTestState);
 
 describe("session state watch ownership", () => {
   it("refuses raw, malformed, and contradictory watch addresses before registering", async () => {
     const database = createDatabaseOptions();
+    setRuntimeConfigSnapshot({});
     for (const address of [
       { watcherSessionKey: watcher, targetSessionKey: "global", targetAgentId: "main" },
       { watcherSessionKey: watcher, targetSessionKey: "global", targetAgentId: "worker" },
@@ -62,6 +65,7 @@ describe("session state watch ownership", () => {
 
   it("keeps raw event history agent-scoped without seeding or publishing ambiguous watches", async () => {
     const database = createDatabaseOptions();
+    setRuntimeConfigSnapshot({});
     for (const agentId of ["main", "worker"]) {
       for (const kind of ["child_spawned", "human_direct_message"] as const) {
         await recordSessionStateEventAsync(
@@ -84,6 +88,7 @@ describe("session state watch ownership", () => {
 
   it("retains historical unbound cursors inert through restart, acknowledgment, and deletion until expiry", async () => {
     const database = createDatabaseOptions();
+    setRuntimeConfigSnapshot({});
     const now = Date.now();
     await upsertSessionEntryCore(
       { sessionKey: watcher, env: database.env },

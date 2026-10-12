@@ -10,7 +10,7 @@ import * as sqliteAdmission from "../../infra/sqlite-database-admission.js";
 import { WorkerTaskError } from "../../infra/worker-task-pool.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { SessionMetadataUnavailableError } from "../../state/session-metadata-unavailable-error.js";
-import { resetConfigRuntimeState, setRuntimeConfigSnapshot } from "../runtime-snapshot.js";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../runtime-snapshot.js";
 import * as sqliteScope from "./session-accessor.sqlite-scope.js";
 import {
   canonicalSessionKeyMigrationRequiredError,
@@ -111,7 +111,7 @@ afterEach(async () => {
   await Promise.all(observed.resources.splice(0).map((resource) => resource.close()));
   await Promise.all([historyLane, targetDiscoveryLane].map((lane) => rotateDatabaseWorkers(lane)));
   vi.restoreAllMocks();
-  resetConfigRuntimeState();
+  clearRuntimeConfigSnapshot();
   expect(observed.nativeWorker).not.toHaveBeenCalled();
 });
 

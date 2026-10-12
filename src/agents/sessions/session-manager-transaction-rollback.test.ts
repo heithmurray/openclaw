@@ -66,6 +66,7 @@ it.each(callbackCases)(
   "$opener keeps reentrant incognito reads and the live view consistent after callback $outcome",
   async ({ opener, outcome }) => {
     await withOpenClawTestState({ label: "manager-callback-rollback" }, async (state) => {
+      setRuntimeConfigSnapshot({});
       const target = await createTarget(state, "callback", true);
       const manager =
         opener === "openAsync"

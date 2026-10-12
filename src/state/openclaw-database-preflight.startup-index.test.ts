@@ -45,6 +45,7 @@ afterEach(async () => {
   setLoggerOverride(null);
   resetLogger();
   vi.restoreAllMocks();
+  clearRuntimeConfigSnapshot();
   vi.unstubAllEnvs();
 });
 

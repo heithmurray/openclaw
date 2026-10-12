@@ -73,6 +73,7 @@ it("suppresses a routeless cron reminder on a WebChat session", async () => {
 });
 
 afterEach(() => {
+  clearRuntimeConfigSnapshot();
   vi.restoreAllMocks();
   resetSystemEventsForTest();
   resetHeartbeatEventsForTest();
