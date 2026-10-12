@@ -914,7 +914,7 @@ class AlphabeticalSequencer extends BaseSequencer {
     return [...files].sort((a, b) => a.moduleId.localeCompare(b.moduleId));
   }
 }
-// Use the actual Gateway execution policy, with fixture-only membership and no
+// Keep Gateway isolation and cleanup, with fixture-only membership and no
 // ordinary setup hooks that could close A's database before runner cleanup.
 export default defineConfig({
   cacheDir: ${JSON.stringify(path.join(root, ".vite"))},
@@ -922,7 +922,8 @@ export default defineConfig({
   resolve: gateway.resolve,
   test: {
     name: "gateway-worker-lifetimes",
-    pool: gateway.test.pool,
+    // Shared-state admission needs the host broker on a process main thread.
+    pool: "forks",
     isolate: gateway.test.isolate,
     runner: gateway.test.runner,
     maxWorkers: gateway.test.maxWorkers,
@@ -996,7 +997,7 @@ export default defineConfig({
         namePrefix: "",
         root: canonicalRoot,
         config: `${canonicalRoot}/vitest.config.ts`,
-        pool: "threads",
+        pool: "forks",
       },
     ]);
     const report: JsonTestResults = JSON.parse(await fs.readFile(reportPath, "utf8"));
