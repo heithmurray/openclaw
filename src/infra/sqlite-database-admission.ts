@@ -683,7 +683,9 @@ export function readSqliteDatabaseWriteRevisionForIdentity(
   }
   const key = `${physicalIdentity.key.slice("file:".length)}:${physicalIdentity.birthtime}`;
   const record = state.registry.records.get(key);
-  return record && !isRetired(record) ? readWriteRevision(record) : undefined;
+  return record && !isRetired(record)
+    ? readSqliteDatabaseGeneration(record, "writeRevision")
+    : undefined;
 }
 
 export function captureSqliteDatabaseAdmissions(

@@ -4,12 +4,14 @@ import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core/expect";
 import { expect, it, vi } from "vitest";
 import { createDeferred, withinTest } from "../../../test/helpers/promise.js";
+import { extractMessagingToolSourceReplyPayload } from "../../agents/embedded-agent-messaging-extraction.js";
 import {
   applyEmbeddedAttemptToolsAllow,
   resolveEmbeddedAttemptToolConstructionPlan,
 } from "../../agents/embedded-agent-runner/run/attempt-tool-construction-plan.js";
 import { buildEmbeddedAttemptToolRunContext } from "../../agents/embedded-agent-runner/run/attempt-tool-run-context.js";
 import type { RunEmbeddedAgentParams } from "../../agents/embedded-agent-runner/run/params.js";
+import { buildEmbeddedRunPayloads } from "../../agents/embedded-agent-runner/run/payloads.js";
 import { runEmbeddedAgent } from "../../agents/embedded-agent.js";
 import { createAgentHarnessHostCapabilities } from "../../agents/harness/host-capability.js";
 import { withGatewayToolCallerIdentity } from "../../agents/tools/gateway-caller-context.js";
@@ -17,9 +19,11 @@ import { resolveAttemptWorkspaceSandbox } from "../../agents/workspace-sandbox.j
 import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import {
   replaceSessionEntry,
+  loadTranscriptEvents,
   loadSessionEntry,
   updateSessionEntry,
 } from "../../config/sessions/session-accessor.js";
+import { readTranscriptEventMessage } from "../../config/sessions/session-accessor.sqlite-read.js";
 import * as sessionLifecycleProjection from "../../config/sessions/session-lifecycle-projection.js";
 import { registerSessionMaintenancePreserveKeysProvider } from "../../config/sessions/store-maintenance-preserve.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
@@ -134,12 +138,16 @@ it.for([
   "failed-adoption",
   "tool-only-delivery",
   "cli-watchdog-guarded",
+  "source-tool",
+  "source-session-replacement",
+  "source-lifecycle-replacement",
 ] as const)(
   "bounds a production background completion by current and retained permissions: %s",
   async (change, { signal, onTestFinished }) => {
     const fixtureWork = withOpenClawTestState(
       { label: "session-event-permissions", env: { OPENCLAW_TEST_FAST: "0" } },
       async (state) => {
+        const sourceTool = change.startsWith("source-");
         const config: OpenClawConfig = {
           agents: {
             entries: { main: { workspace: state.workspaceDir } },
@@ -150,7 +158,12 @@ it.for([
               models: { "mock-openai/gpt-5.6-luna": { agentRuntime: { id: "openclaw" } } },
             },
           },
-          tools: { profile: "coding", codeMode: false, toolSearch: false },
+          tools: {
+            profile: "coding",
+            codeMode: false,
+            toolSearch: false,
+            ...(sourceTool ? { alsoAllow: ["message"] } : {}),
+          },
           skills: { load: { watch: false } },
           plugins: { enabled: false },
         };
@@ -222,6 +235,7 @@ it.for([
         const diagnostic: Record<string, unknown> = {};
         let observedMode: SessionEntry["permissionMode"];
         let retainedWriteRejected = false;
+        let sourceToolFailure: unknown;
         const retainedDowngrade =
           change === "retained-tool-downgrade" || change === "retained-config-downgrade";
         runEmbeddedAgentMock
@@ -298,12 +312,14 @@ it.for([
                 sessionKey: params.sessionKey,
                 workspaceDir: workspace.effectiveWorkspace,
                 cwd: workspace.effectiveCwd,
+                messageChannel: params.messageChannel,
+                messageProvider: params.messageProvider ?? params.messageChannel,
                 sessionPermissionPolicy: workspace.sessionPermissionPolicy,
                 toolConstructionPlan: {
                   ...construction.codingToolConstructionPlan,
                   includeShellTools: false,
                   includeChannelTools: false,
-                  includeOpenClawTools: false,
+                  includeOpenClawTools: sourceTool,
                   includePluginTools: false,
                 },
               });
@@ -311,6 +327,44 @@ it.for([
                 boundTools,
                 construction.runtimeToolAllowlist,
               );
+              if (sourceTool) {
+                const message = expectDefined(
+                  tools.find((tool) => tool.name === "message"),
+                  "source message tool",
+                );
+                if (change !== "source-tool") {
+                  await replaceSessionEntry(scope, {
+                    ...expectDefined(loadSessionEntry(scope), "original source"),
+                    ...(change === "source-session-replacement"
+                      ? { sessionId: "replacement-session" }
+                      : { lifecycleRevision: "replacement-lifecycle" }),
+                  });
+                }
+                const result = await message
+                  .execute("completion-source-send", {
+                    action: "send",
+                    message: "TARGETLESS_COMPLETION_PROOF",
+                  })
+                  .catch((error: unknown) => {
+                    sourceToolFailure = error;
+                    throw error;
+                  });
+                const sourceReply = expectDefined(
+                  extractMessagingToolSourceReplyPayload(result),
+                  "source reply",
+                );
+                return {
+                  payloads: buildEmbeddedRunPayloads({
+                    assistantTexts: [],
+                    lastAssistant: undefined,
+                    sessionKey: scope.sessionKey,
+                    agentId: "main",
+                    sourceReplyDeliveryMode: "message_tool_only",
+                    messagingToolSourceReplyPayloads: [sourceReply],
+                  }),
+                  meta: { durationMs: 1 },
+                };
+              }
               Object.assign(diagnostic, {
                 model: { tools: describeToolCap(params.toolsAllow), mode: params.permissionMode },
                 projection: describeToolCap(construction.runtimeToolAllowlist),
@@ -422,7 +476,7 @@ it.for([
                   abortSignal: AbortSignal.any([signal, cancellation.signal]),
                   expectedTarget: target,
                   createIfMissing: fresh ? true : undefined,
-                  deliver: toolOnly ? undefined : false,
+                  deliver: toolOnly || sourceTool ? undefined : false,
                   ...(toolOnly
                     ? { deliveryContext: { channel: "telegram", to: "synthetic-tool-only-target" } }
                     : {}),
@@ -491,6 +545,31 @@ it.for([
           return;
         }
         expect(accepted).toEqual({ ok: true });
+        if (sourceTool) {
+          expect(runEmbeddedAgentMock).toHaveBeenCalledOnce();
+          const current = expectDefined(loadSessionEntry(scope), "current destination");
+          for (const transcriptSessionId of new Set([target.sessionId, current.sessionId])) {
+            const messages = (
+              await loadTranscriptEvents({ ...scope, sessionId: transcriptSessionId })
+            )
+              .map(readTranscriptEventMessage)
+              .filter(
+                (message) =>
+                  message?.role === "assistant" &&
+                  JSON.stringify(message.content).includes("TARGETLESS_COMPLETION_PROOF"),
+              );
+            expect(messages).toHaveLength(change === "source-tool" ? 1 : 0);
+          }
+          expect(outcome.status, outcome.error).toBe(
+            change === "source-tool" ? "completed" : "failed",
+          );
+          if (change !== "source-tool") {
+            expect(String(sourceToolFailure)).toMatch(
+              /reset|replaced|active|authority|destination/i,
+            );
+          }
+          return;
+        }
         const evidence = JSON.stringify({ outcome, diagnostic });
         expect(await fs.readFile(filePath, "utf8"), evidence).toBe(
           change === "allowed" || change === "new-session" || safetyNotice || remapped || toolOnly

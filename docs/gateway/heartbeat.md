@@ -61,6 +61,14 @@ Doctor prints this one-time note when migration completes:
 
 > Migrated heartbeats now use standard Automations delivery. Heartbeat-specific duplicate suppression and no-route skipping were removed: repeated updates can be delivered, and a missing route no longer skips the run before execution. Delivery failures follow ordinary automation handling. Review the migrated jobs' delivery settings if you relied on either behavior.
 
+Migrated model overrides follow the agent's existing model policy. If a heartbeat
+model is outside that policy, Doctor drops the job's model override and reports
+the affected agent, job, dropped model, and configured default. The job then uses
+normal automation model selection. Doctor does not expand the allowlist. To use
+a different model, choose an allowed model for the job or add the desired model
+to the agent's `modelPolicy.allow` before selecting it. Allowed overrides are
+preserved.
+
 <Warning>
 The shared-state database advances to schema 22 so an older Gateway cannot run
 these jobs while ignoring their new execution or delivery policies. Keep a

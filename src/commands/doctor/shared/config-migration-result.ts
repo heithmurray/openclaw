@@ -48,10 +48,10 @@ export type DoctorConfigPreflightResult = {
 };
 
 /** Keep migrated selectors with Doctor's model-policy owner until billing facts are captured. */
-export function retainHeartbeatMigrationInput(
+export async function retainHeartbeatMigrationInput(
   config: OpenClawConfig,
   source: OpenClawConfig | undefined,
-): OpenClawConfig {
+): Promise<OpenClawConfig> {
   const candidate = structuredClone(config);
   if (source?.agents?.defaults?.heartbeat && candidate.agents) {
     candidate.agents.defaults ??= {};
@@ -61,6 +61,21 @@ export function retainHeartbeatMigrationInput(
     const heartbeat = source?.agents?.entries?.[agentId]?.heartbeat;
     if (heartbeat) {
       entry.heartbeat = structuredClone(heartbeat);
+    }
+  }
+  if (source) {
+    const { resolveHeartbeatAgents } = await import("../../doctor-heartbeat-legacy.js");
+    const { resolveHeartbeatAutomationModel } = await import("../../doctor-heartbeat-model.js");
+    for (const { agentId, heartbeat } of resolveHeartbeatAgents(candidate)) {
+      const entry = candidate.agents?.entries?.[agentId];
+      const fallback = resolveHeartbeatAutomationModel(candidate, agentId).fallback;
+      if (entry && heartbeat) {
+        // Materialize every inherited owner before changing any selector's billing provenance.
+        entry.heartbeat = {
+          ...heartbeat,
+          ...(fallback ? { model: fallback.defaultModel } : {}),
+        };
+      }
     }
   }
   return candidate;

@@ -199,7 +199,6 @@ export async function runEmbeddedFallbackCandidate(
               }
               throw error;
             }
-            await turn.followupRun.run.scheduledAutomation.executionIdentity?.onExecutionStarted?.();
           }
         },
         onExecutionPhase: (info) => {

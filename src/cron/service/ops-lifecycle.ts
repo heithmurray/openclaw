@@ -101,9 +101,7 @@ export async function start(state: CronServiceState): Promise<void> {
 
 /** Close dispatch synchronously, then join execution and the retained worker lease. */
 export function stop(state: CronServiceState) {
-  if (!state.stopped) {
-    state.lifecycleGeneration += 1;
-  }
+  state.lifecycleGeneration += 1;
   state.stopped = true;
   mutationSubscriptions.get(state)?.();
   mutationSubscriptions.delete(state);

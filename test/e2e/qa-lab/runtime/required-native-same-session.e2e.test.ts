@@ -19,6 +19,7 @@ import {
   NODE_WORKER_SUPERVISOR_LAUNCH_COMMAND,
   NODE_WORKER_WORKSPACE_EXEC_COMMAND,
 } from "../../../../src/infra/node-commands.js";
+import { redactSensitiveText } from "../../../../src/logging/redact.js";
 import { prepareNodeHostRuntime } from "../../../../src/node-host/runtime.js";
 import { writeSkill } from "../../../../src/skills/test-support/e2e-test-helpers.js";
 import { withOpenClawAgentDatabaseReadOnly } from "../../../../src/state/openclaw-agent-db-readonly.js";
@@ -532,7 +533,26 @@ it.skipIf(process.platform === "win32")(
                   .map((item) => parseNodeWorkerLaunchInput(item.paramsJSON))
                   .findLast((item) => item.descriptor.assignment.runId === aRun)!;
                 expect(launch.descriptor.assignment.inference).toBe("runtime-local");
-                expect(await host.supervisor.status(launch.launchId)).toMatchObject({
+                const receipt = await host.supervisor.status(launch.launchId);
+                const failureDetail =
+                  receipt?.state === "completed" && receipt.runId === aRun
+                    ? undefined
+                    : redactSensitiveText(
+                        JSON.stringify({
+                          boundary: "native-terminal-before-workspace-quiescence",
+                          elapsedMs: Date.now() - startedAt,
+                          receipt,
+                          nativeRequests: requests,
+                          recentCommands: host.frames.slice(-20).map((item) => item.command),
+                          gatewayErrors: redactSensitiveText(gateway.logs(), { mode: "tools" })
+                            .split("\n")
+                            .filter((line) => /worker|cancel|abort|timed out/i.test(line))
+                            .slice(-12)
+                            .map((line) => line.slice(0, 2048)),
+                        }),
+                        { mode: "tools" },
+                      );
+                expect(receipt, failureDetail).toMatchObject({
                   state: "completed",
                   runId: aRun,
                 });

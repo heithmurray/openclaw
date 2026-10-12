@@ -14,6 +14,7 @@ import {
 import { publishCronJobsStoreMutation, resolveCronJobsStorePathFromConfig } from "../cron/store.js";
 import { cronStoreKey } from "../cron/store/key.js";
 import { loadCronRows } from "../cron/store/row-codec.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import { runOpenClawStateWriteTransaction } from "../state/openclaw-state-db.js";
 import {
   collectHeartbeatCadenceMigrationFindings,
@@ -26,6 +27,7 @@ import {
   resolveHeartbeatConfig,
   validateLegacyHeartbeatConfig,
 } from "./doctor-heartbeat-legacy.js";
+import { resolveHeartbeatAutomationModel } from "./doctor-heartbeat-model.js";
 import { migrateHeartbeatOutcomes } from "./doctor-heartbeat-outcome-migration.js";
 import {
   collectHeartbeatScratchMigrationFindings,
@@ -36,6 +38,7 @@ import {
   maybeMigrateHeartbeatTasksToCron,
   migrateStoredHeartbeatTaskJobs,
 } from "./doctor-heartbeat-task-migration.js";
+import { sanitizeDoctorNote } from "./doctor/emit-notes.js";
 import { migrateHeartbeatVisibility } from "./doctor/shared/channel-legacy-config-migrate.js";
 
 /** Data commits first. Any ambiguous input prevents config removal and remains retryable. */
@@ -74,9 +77,16 @@ export async function retireHeartbeatWithDoctor(
   await migrateStoredHeartbeatTaskJobs(cfg, env);
   await migrateHeartbeatOutcomes(cfg, env);
   await finishClawHeartbeatMigration(clawHandoff, next, { env }, monitors);
-  const completedCutover = runOpenClawStateWriteTransaction(
+  const modelFallbacks = new Map(
+    listAgentIds(cfg).map((agentId) => [
+      agentId,
+      resolveHeartbeatAutomationModel(cfg, agentId).fallback,
+    ]),
+  );
+  const { completedCutover, modelWarnings } = runOpenClawStateWriteTransaction(
     ({ db }) => {
       let completed = false;
+      const warnings: string[] = [];
       const jobs = decodeDoctorHeartbeatJobRows(loadCronRows(db, cronStoreKey(storePath)));
       if (jobs.some((job) => job.payload.kind === "heartbeat" || isHeartbeatTaskCronJob(job))) {
         throw new Error(
@@ -93,11 +103,29 @@ export async function retireHeartbeatWithDoctor(
             `Automation ${receipt.jobId} was deleted during cutover; legacy configuration was retained.`,
           );
         }
+        const fallback = modelFallbacks.get(agentId);
+        if (fallback) {
+          const migratedIds = new Set([receipt.jobId, ...(receipt.convertedJobIds ?? [])]);
+          for (const job of jobs) {
+            if (
+              migratedIds.has(job.id) &&
+              job.agentId === agentId &&
+              job.payload.kind === "agentTurn" &&
+              !job.payload.model
+            ) {
+              warnings.push(
+                sanitizeDoctorNote(
+                  `Agent "${agentId}" automation "${job.id}": dropped heartbeat model "${fallback.model}" because it is outside the agent's allowed model policy. The automation uses normal model selection with configured default "${fallback.defaultModel}". Next step: pick an allowed model or add it to the agent's modelPolicy.allow (agents.entries.${agentId}.modelPolicy.allow) before selecting it.`,
+                ),
+              );
+            }
+          }
+        }
         recordDefaultProactiveJobInDatabase(db, storePath, agentId, receipt.jobId, Date.now());
         completed = true;
       }
       publishCronJobsStoreMutation(storePath, db);
-      return completed;
+      return { completedCutover: completed, modelWarnings: warnings };
     },
     { env },
     { operationLabel: "doctor.heartbeat-cutover-complete" },
@@ -107,6 +135,13 @@ export async function retireHeartbeatWithDoctor(
       "Migrated heartbeats now use standard Automations delivery. Heartbeat-specific duplicate suppression and no-route skipping were removed: repeated updates can be delivered, and a missing route no longer skips the run before execution. Delivery failures follow ordinary automation handling. Review the migrated jobs' delivery settings if you relied on either behavior.",
       "Heartbeat delivery changed",
     );
+  }
+  if (modelWarnings.length) {
+    note(modelWarnings.join("\n"), "Heartbeat model changed");
+    const log = createSubsystemLogger("doctor");
+    for (const warning of modelWarnings) {
+      log.warn(warning);
+    }
   }
   if (
     [...monitors.keys()].some((agentId) => {

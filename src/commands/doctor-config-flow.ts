@@ -143,7 +143,7 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
   };
   let state: DoctorConfigMutationState = {
     cfg: baseCfg,
-    candidate: retainHeartbeatMigrationInput(baseCfg, preflight.heartbeatMigrationSource),
+    candidate: await retainHeartbeatMigrationInput(baseCfg, preflight.heartbeatMigrationSource),
     pendingChanges: false,
     fixHints: [],
   };

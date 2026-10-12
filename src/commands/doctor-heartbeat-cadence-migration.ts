@@ -41,6 +41,7 @@ import {
   migrateHeartbeatPrompt,
   validateLegacyHeartbeatConfig,
 } from "./doctor-heartbeat-legacy.js";
+import { resolveHeartbeatAutomationModel } from "./doctor-heartbeat-model.js";
 import {
   isGeneratedHeartbeatMonitor,
   planDoctorHeartbeatMonitors,
@@ -124,6 +125,7 @@ function convertMonitor(
   env: NodeJS.ProcessEnv,
 ): CronJob {
   const heartbeat = resolveHeartbeatConfig(cfg, agentId);
+  const { model } = resolveHeartbeatAutomationModel(cfg, agentId);
   // A persisted monitor already resolved provider defaults such as OAuth's 1h
   // cadence. Only an authored cadence supersedes that accepted schedule.
   const intervalMs =
@@ -151,7 +153,7 @@ function convertMonitor(
     ...(previous?.payload.toolsAllowIsDefault !== undefined
       ? { toolsAllowIsDefault: previous.payload.toolsAllowIsDefault }
       : {}),
-    ...(heartbeat?.model ? { model: heartbeat.model } : {}),
+    ...(model ? { model } : {}),
     timeoutSeconds:
       heartbeat?.timeoutSeconds ??
       cfg.agents?.defaults?.timeoutSeconds ??

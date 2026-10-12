@@ -393,7 +393,6 @@ export async function runCliFallbackCandidate(
                     }
                     throw error;
                   }
-                  await turn.followupRun.run.scheduledAutomation?.executionIdentity?.onExecutionStarted?.();
                 }
               : undefined,
             scheduledToolPolicy: resolveReplyScheduledToolPolicy(turn.followupRun.run),
