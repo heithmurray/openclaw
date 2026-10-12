@@ -25,6 +25,10 @@ import {
   resetGlobalHookRunner,
 } from "openclaw/plugin-sdk/hook-runtime";
 import { createMockPluginRegistry } from "openclaw/plugin-sdk/plugin-test-runtime";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { createOpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerCopilotCleanupTests } from "./attempt-cleanup.test-support.js";
@@ -337,6 +341,7 @@ function makeParams(
     }
   > = {},
 ): AgentHarnessAttemptParams {
+  setRuntimeConfigSnapshot(overrides.config ?? {});
   const prompt = overrides.prompt ?? "hello";
   const transcriptPrompt = overrides.transcriptPrompt ?? prompt;
   return {
@@ -383,6 +388,7 @@ function makeFinalizationParams(
 }
 
 afterEach(() => {
+  clearRuntimeConfigSnapshot();
   resetGlobalHookRunner();
   vi.restoreAllMocks();
   vi.unstubAllEnvs();

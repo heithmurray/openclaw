@@ -9,6 +9,7 @@ import {
   getRuntimeConfigSnapshot,
 } from "../../../../src/config/config.js";
 import { resetConfigOverrides } from "../../../../src/config/runtime-overrides.js";
+import { setRuntimeConfigSnapshot } from "../../../../src/config/runtime-snapshot.js";
 import {
   loadSessionEntry,
   replaceSessionEntry,
@@ -366,6 +367,7 @@ describe("Gateway heartbeat session routing", () => {
           agents: { defaults: { heartbeat: LegacyHeartbeatConfig } };
         };
         // Persist legacy routes before the Gateway captures database creation ownership.
+        setRuntimeConfigSnapshot(legacyConfig);
         const seedSession = async (params: {
           sessionId: string;
           sessionKey: string;

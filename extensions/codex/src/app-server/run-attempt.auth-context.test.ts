@@ -1,6 +1,10 @@
 import { initializeGlobalHookRunner } from "openclaw/plugin-sdk/hook-runtime";
 import { createMockPluginRegistry } from "openclaw/plugin-sdk/plugin-test-runtime";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "openclaw/plugin-sdk/runtime-config-snapshot";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { itemNotification } from "./protocol.test-helpers.js";
 import {
   createTestParams,
@@ -9,6 +13,7 @@ import {
   setupRunAttemptTestHooks,
 } from "./run-attempt-test-harness.js";
 
+afterEach(() => clearRuntimeConfigSnapshot());
 setupRunAttemptTestHooks();
 
 async function compactWithHooks(overrides: Partial<ReturnType<typeof createTestParams>>) {
@@ -27,6 +32,8 @@ async function compactWithHooks(overrides: Partial<ReturnType<typeof createTestP
     agentAccountId: "account-a",
     ...overrides,
   });
+  const config = params.config ?? {};
+  setRuntimeConfigSnapshot(config, config);
   const run = runCodexAppServerAttempt(params);
   await run.waitForTurnAccepted();
   for (const method of ["item/started", "item/completed"] as const) {

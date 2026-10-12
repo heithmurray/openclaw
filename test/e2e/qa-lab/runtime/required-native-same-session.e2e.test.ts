@@ -388,7 +388,11 @@ it.skipIf(process.platform === "win32")(
                     .filter((line) => /workspace|skills|not allowed|POLICY_DENIED/i.test(line))
                     .join("\n"),
                 );
-                observationFailure.reject(new Error("agent.wait: " + JSON.stringify(result)));
+                observationFailure.reject(
+                  new Error(
+                    `agent.wait: ${JSON.stringify(result)}\n${redactSensitiveText(gateway.logs(), { mode: "tools" }).slice(-12_000)}`,
+                  ),
+                );
               }
               return result;
             });

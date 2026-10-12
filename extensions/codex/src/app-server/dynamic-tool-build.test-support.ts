@@ -1,6 +1,10 @@
 import fs from "node:fs/promises";
 import type { EmbeddedRunAttemptParamsV2 as EmbeddedRunAttemptParams } from "openclaw/plugin-sdk/agent-harness-runtime";
 import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "openclaw/plugin-sdk/runtime-config-snapshot";
+import {
   closeOpenClawAgentDatabasesAsync,
   closeOpenClawStateDatabaseAsync,
 } from "openclaw/plugin-sdk/sqlite-runtime-testing";
@@ -106,6 +110,8 @@ export async function buildDynamicToolsForTest(
   if (!sandboxSessionKey) {
     throw new Error("createParams must provide a sessionKey for Codex dynamic tool tests.");
   }
+  const config = params.config ?? {};
+  setRuntimeConfigSnapshot(config, config);
   return buildDynamicTools({
     params,
     resolvedWorkspace: workspaceDir,
@@ -181,6 +187,7 @@ export async function cleanupDynamicToolBuildFixture(
   vi.restoreAllMocks();
   await closeOpenClawAgentDatabasesAsync();
   await closeOpenClawStateDatabaseAsync();
+  clearRuntimeConfigSnapshot();
   vi.unstubAllEnvs();
   await fs.rm(tempDir, { recursive: true, force: true });
 }

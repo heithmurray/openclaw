@@ -1,5 +1,6 @@
 import { Value } from "typebox/value";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import {
   claimAgentRunContext,
   getAgentRunContext,
@@ -13,7 +14,14 @@ import { createCronTool } from "./cron-tool.js";
 const runId = "automation-invocation";
 const jobId = "automation-job";
 
-afterEach(resetAgentRunRegistryForTest);
+beforeEach(() => {
+  setRuntimeConfigSnapshot({});
+});
+
+afterEach(() => {
+  clearRuntimeConfigSnapshot();
+  resetAgentRunRegistryForTest();
+});
 
 function registerRun(pacingEnabled = false) {
   const state = { current: true };

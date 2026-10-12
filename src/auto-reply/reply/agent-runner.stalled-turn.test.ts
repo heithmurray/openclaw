@@ -112,6 +112,7 @@ function createStalledRun(
     senderId: "traveler",
     inputProvenance: options.inputProvenance,
   });
+  setRuntimeConfigSnapshot(followupRun.run.config);
   followupRun.originatingChannel = options.originatingChannel ?? "telegram";
   followupRun.originatingTo = options.originatingChannel ? undefined : "12345";
   followupRun.operatorAuthority = options.operatorAuthority;

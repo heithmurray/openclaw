@@ -467,20 +467,21 @@ describe("cron session preparation", () => {
       // Later lifecycle admission and writes have their own boundary coverage.
       throw preparedBoundary;
     });
+    const input = makeIsolatedAgentParamsFixture({
+      agentId: "main",
+      cfg: { session: { store: database.path } },
+      sessionKey: sourceKey,
+      job: makeIsolatedAgentJobFixture({
+        sessionTarget: "current",
+        sessionKey: sourceKey,
+        delivery: { mode: "none" },
+      }),
+    });
     const host = observeHostDataSql();
     try {
       await expect(
         prepareCronRunContext({
-          input: makeIsolatedAgentParamsFixture({
-            agentId: "main",
-            cfg: { session: { store: database.path } },
-            sessionKey: sourceKey,
-            job: makeIsolatedAgentJobFixture({
-              sessionTarget: "current",
-              sessionKey: sourceKey,
-              delivery: { mode: "none" },
-            }),
-          }),
+          input,
           isFastTestEnv: true,
           onLifecycleInterrupt: () => {},
         }),

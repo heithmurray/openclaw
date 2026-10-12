@@ -8,6 +8,7 @@ import {
   SYSTEM_PRESENCE_LEGACY_CLEAR_LAST_INPUT_SECONDS,
 } from "../../../packages/gateway-protocol/src/schema/system-event.js";
 import type { SessionEventTarget } from "../../auto-reply/reply/session-event-contract.js";
+import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import {
   loadSessionEntryReadOnly,
   replaceSessionEntry,
@@ -66,6 +67,7 @@ function createRequest(params: Record<string, unknown>, cfg = mainConfig) {
 beforeAll(async () => {
   state = await createOpenClawTestState({ label: "system-event-routing", layout: "state-only" });
   mainConfig = { agents: { entries: { main: {} } } };
+  setRuntimeConfigSnapshot(mainConfig);
   await replaceSessionEntry(
     { agentId: "main", sessionKey: "agent:main:main" },
     { sessionId: "session-main", updatedAt: 1 },

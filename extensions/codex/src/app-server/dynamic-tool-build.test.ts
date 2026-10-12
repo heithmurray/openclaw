@@ -513,6 +513,7 @@ describe("Codex app-server dynamic tool build", () => {
   });
 
   beforeEach(async () => {
+    setRuntimeConfigSnapshot({});
     hoisted.loadNodeExecAvailability.mockResolvedValue({
       cacheKey: "eligible",
       isAvailable: () => true,
@@ -1743,6 +1744,7 @@ describe("Codex app-server dynamic tool build", () => {
       const workspaceDir = path.join(tempDir, "workspace");
       const params = createParams(path.join(tempDir, "session.jsonl"), workspaceDir);
       params.config = { agents: { defaults: { sandbox: { mode: "all" } } } };
+      setRuntimeConfigSnapshot(params.config, params.config);
       const prepared = await prepareCodexNativeExecutionPolicyForRun(params, { sandbox });
       expect(prepared.policy.effectiveExecHost).toBe(expectedExecHost);
       const nodePolicy = await prepareCodexNativeExecutionPolicyForRun(
