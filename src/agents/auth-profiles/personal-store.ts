@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { hasSqliteWorkerOutcomeUnknown } from "../../infra/sqlite-worker-contract.js";
 import type { SqliteWorkerOperationAdmission } from "../../infra/sqlite-worker-operation-admission.js";
 import { createSqliteWorkerWriteAdmission } from "../../infra/sqlite-worker-store.js";
@@ -7,17 +8,27 @@ import { createDeferredCore } from "../../shared/deferred.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import { runOpenClawStateWorkerOperation } from "../../state/openclaw-state-worker-store.js";
 import {
+  capturePersonalCredentialAuthority,
+  withPersonalCredentialPublication,
+} from "../../state/user-model-account-authority.js";
+import {
   normalizeUserModelAuthProfile,
   registerUserModelAuthProfileSecrets,
 } from "../../state/user-model-accounts.js";
 import { AUTH_STORE_VERSION } from "./constants.js";
 import { observeCanonicalAuthProfileCredentials } from "./credential-observation.js";
 import { assertPersonalAuthProfileRuntime } from "./runtime-scope.js";
-import type { AuthProfileStore, OAuthCredential, UserModelAuthProfile } from "./types.js";
+import type {
+  AuthProfileCredential,
+  AuthProfileStore,
+  OAuthCredential,
+  UserModelAuthProfile,
+} from "./types.js";
 
 export type PersonalAuthProfileStore = {
   databasePath: string;
   read(): Promise<AuthProfileStore>;
+  readCurrentCredential(): AuthProfileCredential | undefined;
   update(
     updater: (store: AuthProfileStore) => boolean,
     assertCurrent?: () => void,
@@ -51,6 +62,7 @@ export function withPersonalAuthProfileStore<T>(
     runOpenClawStateWorkerOperation(
       context,
       async (scope) => {
+        const authority = await capturePersonalCredentialAuthority(context, profileId);
         const work = new AsyncWorkScope();
         const asStore = (profile: UserModelAuthProfile | undefined): AuthProfileStore => {
           if (profile) {
@@ -68,10 +80,12 @@ export function withPersonalAuthProfileStore<T>(
             input: { profileId, artifactPreserving: false },
           });
           assertCurrent();
+          authority.observe(profile?.credential);
           return profile;
         };
         const owner: PersonalAuthProfileStore = {
           databasePath: context.admission.databasePath,
+          readCurrentCredential: authority.readCurrentCredential,
           read: async () => asStore(await readProfile()),
           async update(updater, assertUpdateCurrent) {
             const expected = await readProfile();
@@ -115,11 +129,11 @@ export function withPersonalAuthProfileStore<T>(
                   }),
                 {
                   assertCurrent,
-                  createAdmission: (operation) => {
+                  createAdmission: withPersonalCredentialPublication((operation) => {
                     const grant = admission(operation);
                     nativeAdmission = grant.admission;
                     return grant;
-                  },
+                  }, context),
                 },
               );
               if (!updated) {
@@ -128,7 +142,8 @@ export function withPersonalAuthProfileStore<T>(
               return asStore(updated);
             } catch (error) {
               if (
-                nativeAdmission?.committed?.facts === digest &&
+                isRecord(nativeAdmission?.committed?.facts) &&
+                nativeAdmission.committed.facts.digest === digest &&
                 hasSqliteWorkerOutcomeUnknown(error)
               ) {
                 return asStore(next);
