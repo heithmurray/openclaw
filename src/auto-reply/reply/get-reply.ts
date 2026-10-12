@@ -124,7 +124,7 @@ export async function getReplyFromConfig(
 
 async function resolveReplyFromConfig(
   ctx: MsgContext,
-  options: GetReplyOptions | undefined,
+  options: InternalGetReplyOptions | undefined,
   configOverride: OpenClawConfig | undefined,
   baseline: ReplyDiffBaseline,
 ): Promise<ReplyPayload | ReplyPayload[] | undefined> {
