@@ -15,6 +15,7 @@ import {
   runOpenClawAgentWriteTransaction,
 } from "../../state/openclaw-agent-db.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import { captureRuntimeConfigAsyncReader } from "../io.js";
 import {
   retainPreparedSessionEntryPredicate,
   retainPreparedSessionGenerationFacts,
@@ -107,6 +108,7 @@ it.each(["autocommit", "transaction"] as const)(
   "seals native metadata before observers for %s",
   async (mode) => {
     await withOpenClawTestState({ scenario: "minimal" }, async ({ env }) => {
+      await captureRuntimeConfigAsyncReader()();
       const sessionKey = "agent:main:native-metadata-seal";
       await upsertSessionEntryCore(
         { agentId: "main", sessionKey, env },
