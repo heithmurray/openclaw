@@ -13,7 +13,7 @@ import { clearHealthChecksForTest, registerHealthCheck } from "../flows/health-c
 import { prepareSqliteReadOnlyLocation } from "../infra/sqlite-snapshot-source.js";
 import { ExitError } from "../runtime.js";
 import { openOpenClawAgentDatabaseReadOnly } from "../state/openclaw-agent-db-readonly-open.js";
-import { listOpenClawRegisteredAgentDatabases } from "../state/openclaw-agent-db-registry-listing.js";
+import { inspectOpenClawRegisteredAgentDatabases } from "../state/openclaw-agent-db-registry-listing.js";
 import {
   closeOpenClawAgentDatabasesAsync,
   openOpenClawAgentDatabase,
@@ -293,7 +293,7 @@ it.each([
           ]),
         );
         // Pending cron and delivery migrations do not change the canonical registry.
-        expect(listOpenClawRegisteredAgentDatabases({ env: state.env })).toEqual([]);
+        expect(await inspectOpenClawRegisteredAgentDatabases({ env: state.env })).toEqual([]);
         expect(snapshotSqliteFiles(state.stateDir)).toEqual(before);
       },
     );
