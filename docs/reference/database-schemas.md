@@ -14,7 +14,7 @@ OpenClaw stores control-plane state in the shared state database and agent data 
 PostgreSQL shared-state generation requires PostgreSQL 16+, preserves lazy feature
 fragments, and keeps engine schema versions in lockstep. See
 [shared-state schema generation](/reference/database-schemas/storage-changes#shared-state-postgresql-schema-generation)
-for catalog equivalence and the explicit v22 pending-promotion exceptions.
+for catalog equivalence and the portable v22 identity columns.
 
 The Gateway process is the single owner of every OpenClaw database and its state.
 Its workers and native handles share that ownership. Committed write receipts

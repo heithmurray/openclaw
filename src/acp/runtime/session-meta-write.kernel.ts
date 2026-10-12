@@ -17,7 +17,7 @@ export function bindAcpSessionMeta(params: {
   lifecycleRevision?: string;
   meta: SessionAcpMeta;
   updatedAt: number;
-}): AcpSessionRow {
+}): Omit<AcpSessionRow, "resume_agent_session_id" | "resume_acpx_session_id"> {
   return {
     session_key: params.sessionKey,
     // Kept in the existing column for schema neutrality. New rows prefer the

@@ -97,7 +97,7 @@ In particular, `user_background_images` depends on `user_profiles`; its cascadin
 foreign key is retained and installed only after both tables exist. Generating a
 fragment does not activate PostgreSQL shared-state runtime support.
 
-Both engines use the same shared-state schema version (currently 21). Every
+Both engines use the same shared-state schema version (currently 22). Every
 future version change must supply both engines' forward migration and catalog
 equivalence proof together. JSON stays canonical: a query/index projection is
 derived once in TypeScript and committed in the same statement as its JSON.
@@ -122,18 +122,23 @@ surrounding length, JSON, and newline constraints remain CHECKs, preserving NULL
 semantics. These are ten subpredicates; six CHECKs reported `instr` as their first
 unsupported construct, while four more guards were hidden behind byte casts.
 
-The two `acp_sessions` indexes `idx_acp_sessions_resume_agent` and
-`idx_acp_sessions_resume_acpx` are separately recorded as `pendingPromotion`,
-never as SQLite-only exceptions. The v22 promotion follow-up (PR4b, alongside
-receipt cursors) replaces JSON-extract indexing with promoted columns derived
-using `readJsonObjectMembers` and first-duplicate-wins semantics. No other index
-is admitted to this pending list.
+Schema 22 promotes the two ACP resume index expressions to columns. The single
+metadata writer derives both values with SQLite-compatible scalar conversion,
+first-duplicate-wins JSON lookup, and the existing whitespace rules. Resume
+lookups retain their text-only eligibility check. JSON stays canonical; receipt
+publication and cohort-cache lifetime are unchanged.
+
+Approvals, cron receipts, execution decision facts, and Skill Workshop changes
+use explicit unique `cursor_id` columns. Migration preserves the original rowid
+values, including gaps; existing cursor wire formats and insertion-order ties
+remain valid. Serialized writers assign `max(cursor_id) + 1` within their existing
+transactions. The generator's `pendingPromotion` list is empty.
 
 The CI **PostgreSQL conformance** job bootstraps the generated eager schema and
 all fragments into an isolated schema on a real server, then compares every
 table's columns, types, nullability, defaults, primary/unique keys, CHECK count,
 index count, and foreign keys (including actions and deferrability) against the
-SQLite catalog. It reports the two pending indexes explicitly. Locally run
+SQLite catalog. All shared-state indexes are translated. Locally run
 `pnpm db:postgres:gen --check-connection '<disposable PostgreSQL DSN>'`; the check
 removes its isolated schema afterward. This proves DDL equivalence, not runtime
 SQL/concurrency conformance or a choice of per-agent PostgreSQL topology.

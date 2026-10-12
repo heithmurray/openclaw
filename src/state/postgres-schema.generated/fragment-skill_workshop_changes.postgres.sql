@@ -5,6 +5,7 @@ BEGIN;
 SET LOCAL standard_conforming_strings = on;
 
 CREATE TABLE "openclaw_state"."skill_workshop_changes" (
+  "cursor_id" bigint NOT NULL,
   "change_id" text COLLATE "C" NOT NULL,
   "agent_id" text COLLATE "C" NOT NULL,
   "skill_name" text COLLATE "C" NOT NULL,
@@ -21,5 +22,7 @@ CREATE TABLE "openclaw_state"."skill_workshop_changes" (
 );
 
 CREATE INDEX "idx_skill_workshop_changes_agent_time" ON "openclaw_state"."skill_workshop_changes" (("agent_id") ASC NULLS FIRST, ("created_at_ms") ASC NULLS FIRST);
+
+CREATE UNIQUE INDEX "skill_workshop_changes_cursor_id_idx" ON "openclaw_state"."skill_workshop_changes" (("cursor_id") ASC NULLS FIRST);
 
 COMMIT;
