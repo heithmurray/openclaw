@@ -69,7 +69,7 @@ describe("tool summary digest cache", () => {
   });
 
   it("reports changed descriptions on retained finalized tools", () => {
-    const tools = finalize([makeTool("exec", "Initial summary probe")]);
+    const tools = finalize([makeTool("probe", "Initial summary probe")]);
     const first = buildReport(tools).tools.entries[0];
     tools[0]!.description = "Updated summary probe with another capability";
     const second = buildReport(tools).tools.entries[0];
