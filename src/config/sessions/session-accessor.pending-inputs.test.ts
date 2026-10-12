@@ -15,6 +15,7 @@ import {
   runOpenClawAgentWriteTransaction,
 } from "../../state/openclaw-agent-db.js";
 import { runOpenClawAgentWriteAdmission } from "../../state/openclaw-agent-write-admission.js";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../runtime-snapshot.js";
 import {
   appendTranscriptMessage,
   appendTranscriptMessageSync,
@@ -45,7 +46,10 @@ import {
 } from "./session-accessor.sqlite-transcript-write.test-support.js";
 import { SessionPendingInputCustodyError } from "./session-pending-input-custody-error.js";
 import { readSessionPendingInputReceiptsInWorker as listSessionPendingInputReceipts } from "./session-pending-input-receipts.js";
-import { waitForSessionTranscriptProjection } from "./session-transcript-reconcile.js";
+import {
+  waitForSessionTranscriptIndexReconcile,
+  waitForSessionTranscriptProjection,
+} from "./session-transcript-reconcile.js";
 import { useTempSessionsFixture } from "./test-helpers.js";
 
 const custodyFault = useSqliteWorkerFault([
@@ -105,6 +109,7 @@ describe("accepted input custody", () => {
       );
 
   beforeEach(async () => {
+    setRuntimeConfigSnapshot({ session: { store: fixture.storePath() } });
     await upsertSessionEntryCore(scope(), { sessionId, updatedAt: 1 });
   });
   afterEach(async () => {
@@ -114,6 +119,7 @@ describe("accepted input custody", () => {
     }
     await Promise.allSettled(retained.map(async (receipt) => receipt.settled?.()));
     closeOpenClawAgentDatabasesForTest();
+    clearRuntimeConfigSnapshot();
   });
 
   it("keeps accepted input outside the active transcript and applies its hook once across replay and promotion", async () => {
@@ -385,6 +391,7 @@ describe("accepted input custody", () => {
     const receipt = await stage("relocation-savepoints");
     await promote(receipt);
     const databaseOptions = toDatabaseOptions(resolveSqliteScope(scope()));
+    await waitForSessionTranscriptIndexReconcile(databaseOptions);
     const appendCopy = createRelocation(receipt);
 
     expect(() =>
@@ -528,7 +535,7 @@ describe("accepted input custody", () => {
   });
 
   it("binds lazy recorder collection to approved sources and reports consumed source retry without execution", async () => {
-    const target = { ...scope(), sessionEntry: undefined };
+    const target = { ...scope(), sessionEntry: undefined, config: {} };
     const hook = vi.fn(({ message: input }: { message: PersistedUserTurnMessage }) => ({
       ...input,
       content: "Approved source",
