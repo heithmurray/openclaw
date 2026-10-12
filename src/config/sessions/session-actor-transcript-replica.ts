@@ -19,11 +19,10 @@ export type SessionActorTranscriptReplica = {
   tail: { events: SessionActorTranscriptRow[]; coveredAfterSeq: number };
   context?: {
     limits: Limits;
-    exact: Bounded;
-    admission?: UserTurnTranscriptAdmissionReceipt;
-    /** Complete active path only; a bounded/truncated cold read stays an exact-view cache. */
-    rows?: SessionActorTranscriptRow[];
-  };
+  } & (
+    | { rows: SessionActorTranscriptRow[]; exact?: never; admission?: never }
+    | { rows?: never; exact: Bounded; admission?: UserTurnTranscriptAdmissionReceipt }
+  );
 };
 
 export function sameSessionActorTranscriptVersion(
@@ -165,12 +164,13 @@ export function seedSessionActorTranscriptContext(
   }
   return {
     ...current,
-    context: {
-      limits: { ...limits },
-      exact: structuredClone(prepared),
-      admission: admission && { ...admission },
-      rows: complete,
-    },
+    context: complete
+      ? { limits: { ...limits }, rows: complete }
+      : {
+          limits: { ...limits },
+          exact: structuredClone(prepared),
+          admission: admission && { ...admission },
+        },
   };
 }
 
@@ -208,13 +208,8 @@ export function advanceSessionActorTranscriptReplica(
     const rows = [...retained.context.rows, ...appended];
     if (simplePath(rows) && fits(rows, retained.context.limits)) {
       next.context = {
-        ...retained.context,
+        limits: retained.context.limits,
         rows,
-        exact: readSessionActorBoundedHistory(
-          { hot: postimage, events: rows },
-          retained.context.limits,
-        ),
-        admission: undefined,
       };
     }
   }
