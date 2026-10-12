@@ -101,7 +101,11 @@ export function readPluginStateObservationCache(
   key: Key,
   writeRevision: number | undefined,
 ) {
-  if (state.pending.has(identity)) {
+  if (
+    state.pending.has(identity) ||
+    writeRevision === undefined ||
+    state.entries.peek(cacheKey(identity, key))?.writeRevision !== writeRevision
+  ) {
     return undefined;
   }
   return readCommittedPluginStateObservationCache(identity, key);
@@ -110,7 +114,7 @@ export function readPluginStateObservationCache(
 /** Pending writes do not replace committed facts used by a live native lease. */
 export function readCommittedPluginStateObservationCache(identity: string, key: Key) {
   const entry = state.entries.get(cacheKey(identity, key));
-  if (!entry?.loaded || writeRevision === undefined || entry.writeRevision !== writeRevision) {
+  if (!entry?.loaded) {
     return undefined;
   }
   const row = entry.row;
