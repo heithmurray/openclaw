@@ -37,8 +37,7 @@ import {
 import { hashConfigIncludeRaw, isInternalIncludeWriteTarget } from "./includes.js";
 import { createInvalidConfigError, formatInvalidConfigDetails } from "./io.invalid-config.js";
 import {
-  createConfigIO,
-  readConfigFileSnapshotForWrite,
+  type readConfigFileSnapshotForWrite,
   resolveConfigSnapshotHash,
   writeConfigFile,
   type ConfigWriteOptions,
@@ -63,6 +62,7 @@ import {
   rollbackJsonFileWriteIfUnchanged,
   writeRootBoundJsonFile,
 } from "./mutate.include-io.js";
+import { readConfigSnapshotForMutation } from "./mutate.snapshot.js";
 import { ConfigMutationConflictError } from "./mutation-conflict.js";
 import type { ConfigMutationBase } from "./mutation-types.js";
 import { resolveConfigPath } from "./paths.js";
@@ -226,44 +226,6 @@ export async function withConfigMutationLock<T>(
         undefined,
         assertCurrent,
       );
-}
-
-async function readConfigSnapshotForMutation(params: {
-  ownedConfigPathForWrite?: string;
-  io?: ConfigMutationIO;
-  writeOptions?: ConfigWriteOptions;
-}): ReturnType<typeof readConfigFileSnapshotForWrite> {
-  const options = {
-    ...(params.writeOptions?.skipPluginValidation ? { skipPluginValidation: true } : {}),
-    ...(params.writeOptions?.observe === false ? { observe: false } : {}),
-  };
-  if (params.io) {
-    return await params.io.readConfigFileSnapshotForWrite(options);
-  }
-  if (params.ownedConfigPathForWrite) {
-    const ioOptions = {
-      configPath: params.ownedConfigPathForWrite,
-      ...(params.writeOptions?.skipPluginValidation ? { pluginValidation: "skip" as const } : {}),
-      ...(params.writeOptions?.observe === false ? { observe: false } : {}),
-      ...(params.writeOptions?.preservedLegacyRootKeys
-        ? { preservedLegacyRootKeys: params.writeOptions.preservedLegacyRootKeys }
-        : {}),
-    };
-    const io = hasManagedRuntimeConfigWriteOwner(params.ownedConfigPathForWrite)
-      ? createConfigIO({
-          ...ioOptions,
-          env: createConfigRuntimeEnvBase(
-            resolveManagedRuntimeEnvBaseline().sourceConfig,
-            process.env,
-            {
-              preservedKeys: GATEWAY_CONFIG_SELECTION_ENV_KEYS,
-            },
-          ),
-        })
-      : createConfigIO(ioOptions);
-    return await io.readConfigFileSnapshotForWrite();
-  }
-  return await readConfigFileSnapshotForWrite(options);
 }
 
 function mergeConfigMutationWriteOptions(

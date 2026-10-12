@@ -12,6 +12,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { PluginInstallRecord } from "../config/types.plugins.js";
 import { readHookInstalls } from "../hooks/installs.js";
 import { updateNpmInstalledHookPacks } from "../hooks/update.js";
+import { readDeferredPluginMigrationsAsync } from "../infra/deferred-plugin-migrations.js";
 import { normalizeUpdateChannel, resolveRegistryUpdateChannel } from "../infra/update-channels.js";
 import { resolveSourceCheckoutBundledPluginIds } from "../plugins/bundled-sources.js";
 import {
@@ -223,7 +224,9 @@ async function runPluginUpdateCommandUnlocked(
     assertConfigWriteAllowedInCurrentMode();
   }
 
-  const sourceSnapshotPromise = readConfigFileSnapshotForWrite()
+  const deferredPluginMigrations = await readDeferredPluginMigrationsAsync();
+  assertOwned();
+  const sourceSnapshotPromise = readConfigFileSnapshotForWrite({ deferredPluginMigrations })
     .then((prepared) => {
       const writeOptions = selectInstallMutationWriteOptions(prepared.writeOptions);
       return {
@@ -564,6 +567,7 @@ async function runPluginUpdateCommandUnlocked(
       });
       const writeOptions = {
         ...sourceSnapshot?.writeOptions,
+        deferredPluginMigrations,
         afterWrite: {
           mode: "none" as const,
           reason: "plugin update owns registry refresh",
@@ -593,6 +597,8 @@ async function runPluginUpdateCommandUnlocked(
         return logPluginUpdateOutcomes([...pluginResult.outcomes, ...hookResult.outcomes]);
       }
       nextConfig = migration?.config ?? nextConfig;
+      writeOptions.deferredPluginMigrations =
+        migration?.deferredPluginMigrations ?? deferredPluginMigrations;
       const commit = async () => {
         if (shouldPersistPluginInstallIndex) {
           if (
@@ -606,7 +612,7 @@ async function runPluginUpdateCommandUnlocked(
               verifyConfigFresh: async () => {
                 await assertRecordsOnlyUpdateConfigFresh({
                   baseHash: sourceSnapshot?.snapshot.hash,
-                  writeOptions: sourceSnapshot?.writeOptions,
+                  writeOptions,
                 });
               },
             });

@@ -251,16 +251,15 @@ export async function persistValidatedDowngradeConfig(
         snapshot.path,
         () =>
           mutateConfigFileWithRetry({
-            io: createConfigIO({ configPath: snapshot.path, deferredPluginMigrations }),
             mutate: () => undefined,
-            ...(assertCurrent
-              ? {
-                  writeOptions: withUpdateConfigWriteAuthority(
-                    { beforeCommit: assertCurrent },
-                    assertCurrent,
-                  ),
-                }
-              : {}),
+            writeOptions: withUpdateConfigWriteAuthority(
+              {
+                deferredPluginMigrations,
+                expectedConfigPath: snapshot.path,
+                ...(assertCurrent ? { beforeCommit: assertCurrent } : {}),
+              },
+              assertCurrent,
+            ),
           }),
         process.env,
         assertCurrent,
@@ -292,9 +291,10 @@ export async function persistRequestedUpdateChannel(params: {
     params.configSnapshot.path,
     () =>
       mutateConfigFileWithRetry({
-        io: createConfigIO({ configPath: params.configSnapshot.path, deferredPluginMigrations }),
         writeOptions: withUpdateConfigWriteAuthority(
           {
+            deferredPluginMigrations,
+            expectedConfigPath: params.configSnapshot.path,
             skipPluginValidation: true,
             ...(params.assertCurrent ? { beforeCommit: params.assertCurrent } : {}),
           },
@@ -347,6 +347,7 @@ export async function preparePostCorePluginConfig(params: {
     configWriteOptions: withUpdateConfigWriteAuthority(
       {
         ...prepared.writeOptions,
+        deferredPluginMigrations,
         ...(params.assertCurrent ? { beforeCommit: params.assertCurrent } : {}),
       },
       params.assertCurrent,

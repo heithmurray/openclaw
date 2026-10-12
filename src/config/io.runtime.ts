@@ -10,6 +10,7 @@ import {
 } from "./config-env-vars.js";
 import { resolveManagedUnsetPathsForWrite } from "./config-path-mutation.js";
 import { assertConfigWriteAllowedInCurrentMode } from "./config-write-guard.js";
+import { getDeferredPluginMigrationConfigFacts } from "./deferred-plugin-migration-config.js";
 import { resolveWriteEnvSnapshotForPath } from "./env-preserve.js";
 import { GATEWAY_CONFIG_SELECTION_ENV_KEYS } from "./gateway-env-selection.js";
 import { createConfigIO } from "./io.factory.js";
@@ -378,10 +379,18 @@ export async function readConfigFileSnapshotForRuntimeTransaction(
 export async function readConfigFileSnapshotForWrite(options?: {
   skipPluginValidation?: boolean;
   observe?: boolean;
+  deferredPluginMigrations?: ConfigWriteOptions["deferredPluginMigrations"];
+  preservedLegacyRootKeys?: readonly string[];
 }): Promise<ReadConfigFileSnapshotForWriteResult> {
   const readOptions = {
     ...(options?.skipPluginValidation ? { pluginValidation: "skip" as const } : {}),
     ...(options?.observe === false ? { observe: false } : {}),
+    ...(options?.deferredPluginMigrations !== undefined
+      ? { deferredPluginMigrations: options.deferredPluginMigrations }
+      : {}),
+    ...(options?.preservedLegacyRootKeys
+      ? { preservedLegacyRootKeys: options.preservedLegacyRootKeys }
+      : {}),
   };
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -410,7 +419,11 @@ export async function writeConfigFile(
   options: ConfigWriteOptions = {},
 ): Promise<ConfigWriteResult> {
   options.assertConfigPathForWrite?.();
+  const deferredPluginMigrations =
+    options.deferredPluginMigrations ??
+    getDeferredPluginMigrationConfigFacts(options.baseSnapshot?.sourceConfig);
   const ioOptions = {
+    ...(deferredPluginMigrations !== undefined ? { deferredPluginMigrations } : {}),
     ...(options.ownedConfigPathForWrite ? { configPath: options.ownedConfigPathForWrite } : {}),
     ...(options.skipPluginValidation ? { pluginValidation: "skip" as const } : {}),
     ...(options.observe === false ? { observe: false } : {}),
