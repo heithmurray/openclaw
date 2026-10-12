@@ -84,10 +84,7 @@ describe("node worker launch wire", () => {
     { timeout: TEST_TIMEOUT_MS },
     async () => {
       const testStartedAt = performance.now();
-      const root = tempDirs.make("openclaw-node-worker-launch-wire-");
-      const provider = await startMidturnProvider();
-      const published = await createPublishedWireWorkspace(root);
-      const gatewayOwner = createQaGatewayChild();
+      let provider: Awaited<ReturnType<typeof startMidturnProvider>> | undefined = undefined;
       let gateway: WireGateway | undefined;
       let operator: GatewayClient | undefined;
       let workerNode: PairedNodeWorkerHost | undefined;
@@ -102,14 +99,14 @@ describe("node worker launch wire", () => {
       let workerAuditBeforeRestart: string | undefined;
       let testFailure: { error: unknown } | undefined;
       let cleanupFailures: unknown[];
-      let phase = "gateway startup";
+      let phase = "provider startup";
       onTestFailed(() => {
         console.error(
           redactSensitiveText(
             JSON.stringify({
               phase,
               elapsedMs: Math.round(performance.now() - testStartedAt),
-              providerRequestCount: provider.requestCount,
+              providerRequestCount: provider?.requestCount,
               nodeCommands: workerNode?.commands.slice(-20),
               nodeErrors: workerNode?.invokeErrors.map(String),
               legacyNodeCommands: legacyWorkerNode?.commands.slice(-20),
@@ -122,6 +119,12 @@ describe("node worker launch wire", () => {
         }
       });
 
+      const root = tempDirs.make("openclaw-node-worker-launch-wire-");
+      provider = await startMidturnProvider();
+      phase = "workspace publication";
+      const published = await createPublishedWireWorkspace(root);
+      const gatewayOwner = createQaGatewayChild();
+      phase = "gateway startup";
       try {
         gateway = await startPairedNodeWorkerGateway({
           owner: gatewayOwner,
