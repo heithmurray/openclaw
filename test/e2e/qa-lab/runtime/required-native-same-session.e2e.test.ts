@@ -657,8 +657,9 @@ it.skipIf(process.platform === "win32")(
               expect(requests).not.toContain(markers.B);
               const pendingInput = readPendingInput(gateway, key, markers.B);
               expect(pendingInput).toMatchObject({
-                found: true,
-                value: { state: "queued", session_id: placed.session_id, run_id: markers.B },
+                state: "queued",
+                session_id: placed.session_id,
+                run_id: markers.B,
               });
               const pendingHistory = (await history(key)).pendingInputs;
               record("B-public-pending-input", {
