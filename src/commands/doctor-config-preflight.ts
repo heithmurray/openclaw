@@ -381,8 +381,12 @@ async function runDoctorConfigPreflightOperation(
                 // written by a published Gateway without authored heartbeat settings.
                 const { retireHeartbeatWithDoctor } =
                   await import("./doctor-heartbeat-retirement.js");
+                const { normalizeHeartbeatRepairSource } =
+                  await import("./doctor-automatic-heartbeat-repair.js");
                 await measurePreflightStep("heartbeat-retirement", () =>
-                  retireHeartbeatWithDoctor(currentSnapshot.sourceConfig),
+                  retireHeartbeatWithDoctor(
+                    normalizeHeartbeatRepairSource(currentSnapshot).sourceConfig,
+                  ),
                 );
               }
             : undefined,

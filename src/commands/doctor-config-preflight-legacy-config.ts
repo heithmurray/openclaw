@@ -40,15 +40,16 @@ export function createDoctorConfigRepairPlanner(params: {
       { config: snapshot.sourceConfig ?? snapshot.config ?? {} },
       async () => {
         if (params.options.doctorOnlyStateMigrations === true) {
+          const { normalizeHeartbeatRepairSource } =
+            await import("./doctor-automatic-heartbeat-repair.js");
           const { tryProjectRetiredHeartbeatConfig } = await import("./doctor-heartbeat-legacy.js");
-          const projected = tryProjectRetiredHeartbeatConfig(snapshot.sourceConfig);
+          const migrated = normalizeHeartbeatRepairSource(snapshot);
+          const projected = tryProjectRetiredHeartbeatConfig(migrated.sourceConfig);
           if (projected && !isDeepStrictEqual(projected, snapshot.sourceConfig)) {
             // Validate the destination; preflight retires the original data before publication.
             return planAutomaticConfigRepair(snapshot, {
               config: projected,
-              changes: [
-                "Retired heartbeat configuration after ordinary automation data was verified.",
-              ],
+              changes: migrated.changes,
               pendingStateMigration: true,
             });
           }

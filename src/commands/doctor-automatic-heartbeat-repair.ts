@@ -48,7 +48,7 @@ function assertHeartbeatRepairSourceCurrent(before: ConfigFileSnapshot, after: C
   }
 }
 
-function normalizeHeartbeatRepairSource(snapshot: ConfigFileSnapshot) {
+export function normalizeHeartbeatRepairSource(snapshot: ConfigFileSnapshot) {
   const migrated = applyLegacyDoctorMigrations(snapshot.sourceConfig, {
     sourceConfigBeforeMigrations: snapshot.sourceConfigBeforeMigrations,
     context: { authoredRaw: snapshot.parsed, resolvedRaw: snapshot.sourceConfig },
