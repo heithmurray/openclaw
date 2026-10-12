@@ -83,6 +83,13 @@ For OpenAI-compatible LAN endpoints such as LocalAI, keep the custom
 internal image endpoints remain blocked by default.
 </Warning>
 
+Custom endpoints configured under `models.providers.openai` can return either
+`b64_json` or `data[].url`. OpenClaw downloads URL results using the provider's
+existing network policy and the image size cap from `agents.defaults.mediaMaxMb`.
+The image server must return an image `Content-Type`. Provider credentials are
+not forwarded to image URLs. GPT Image models return base64 directly; OpenClaw
+does not force the legacy `response_format` parameter on custom endpoints.
+
 ## Common routes
 
 | Goal                                             | Model ref                                                                                           | Auth                                           |
