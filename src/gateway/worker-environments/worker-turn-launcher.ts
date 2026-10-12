@@ -12,7 +12,6 @@ import {
   createDynamicSessionSourceAssertion,
 } from "../../config/sessions/session-source-authority.js";
 import { emitAgentRunStatusEvent } from "../../infra/agent-run-status-events.js";
-import { logWarn } from "../../logger.js";
 import { markDiagnosticRunProgress } from "../../logging/diagnostic-run-activity.js";
 import { getGatewayRestartDrainSignal } from "../../process/gateway-work-admission.js";
 import { createLazyRuntimeModule } from "../../shared/lazy-runtime.js";
@@ -23,7 +22,6 @@ import { isCurrentPlacementTurnClaim, sameWorkerSessionTurnClaim } from "./place
 import type { WorkerSessionTurnClaim } from "./placement-store.js";
 import { isWorkerEnvironmentAttachedTo, matchesWorkerPlacementTarget } from "./placement-target.js";
 import { ActiveTurnClaimError } from "./placement-turn-claims.js";
-import { findPendingWorkerWorkspaceResult } from "./placement-workspace-result.js";
 import { WorkerRuntimeRefreshPendingError } from "./provider-runtime-refresh.js";
 import type { WorkerSessionWorkspace } from "./session-workspace.js";
 import {
@@ -31,7 +29,6 @@ import {
   WorkerRunnerUnavailableError,
   WorkerTunnelOwnerDisconnectedError,
 } from "./tunnel-contract.js";
-import { boundedWorkerError } from "./worker-error.js";
 import {
   assertWorkerPlacementCompactionAllowed,
   claimWorkerTurn,
@@ -48,6 +45,7 @@ import {
 } from "./worker-turn-admission.js";
 import {
   failHandedOffTurn,
+  prepareWorkerTurnFailure,
   WorkerTurnExecutionError,
   WorkerWorkspaceReconciliationError,
   type ActiveWorkerPlacement,
@@ -636,24 +634,10 @@ export function createWorkerSessionTurnPlacementProvider(options: WorkerTurnLaun
                   requireActivePlacement(reconciled);
                 }
               }
-              if (handedOff && !remoteExec && options.persistAbandonedPartial) {
-                try {
-                  if (options.placements.validateTurnClaim(turnClaim)) {
-                    await options.persistAbandonedPartial({
-                      ...turnClaim,
-                      sessionKey: placement.sessionKey,
-                      agentId: placement.agentId,
-                    });
-                  }
-                } catch (error) {
-                  logWarn(
-                    `Cloud worker partial reply could not be saved: ${boundedWorkerError(error)}`,
-                  );
-                }
-              }
-              const pendingWorkspaceResult = await findPendingWorkerWorkspaceResult(
+              const pendingWorkspaceResult = await prepareWorkerTurnFailure(
                 options.placements,
-                turnClaim,
+                { ...identity, ...turnClaim },
+                handedOff && !remoteExec ? options.persistAbandonedPartial : undefined,
               );
               if (pendingWorkspaceResult) {
                 if (turnClaim.owner.kind === "local") {
