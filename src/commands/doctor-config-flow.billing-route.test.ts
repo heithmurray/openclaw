@@ -122,6 +122,11 @@ describe("Doctor model billing route migration", () => {
         );
         expect((await readMigratedHeartbeatJob()).payload).toMatchObject({
           kind: "agentTurn",
+          model: "openai/gpt-4o-mini",
+        });
+        await observeDoctorConfigStep("post-write-repairs", () => runWriteConfigHealth(ctx));
+        expect((await readMigratedHeartbeatJob()).payload).toMatchObject({
+          kind: "agentTurn",
           model: `openai/${successor}`,
         });
         const expectedRoute = `openai/gpt-4o-mini via metered API-key profile openai:default -> openai/${successor} via subscription/OAuth profile openai:chatgpt-default.`;
@@ -302,7 +307,7 @@ describe("Doctor deferred model retirement", () => {
           expect(ctx.cfg.agents?.defaults?.heartbeat).toBeUndefined();
           expect((await readMigratedHeartbeatJob()).payload).toMatchObject({
             kind: "agentTurn",
-            model: "openai/gpt-5.6-luna",
+            model: "openai/gpt-5.4-mini",
           });
           const before = await fs.readFile(f.configPath, "utf8");
           ctx.cfg.gateway = { ...ctx.cfg.gateway, port: -1 };
@@ -310,6 +315,10 @@ describe("Doctor deferred model retirement", () => {
           expect(ctx.configWriteRefusal).toBe("validation");
           expect(f.receipt()).toMatchObject({ status: "skipped" });
           expect(await fs.readFile(f.configPath, "utf8")).toBe(before);
+          expect((await readMigratedHeartbeatJob()).payload).toMatchObject({
+            kind: "agentTurn",
+            model: "openai/gpt-5.4-mini",
+          });
         },
       );
     });

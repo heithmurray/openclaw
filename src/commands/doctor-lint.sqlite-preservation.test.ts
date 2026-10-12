@@ -292,10 +292,9 @@ it.each([
             }),
           ]),
         );
-        // Inspection cannot admit an old-schema registry to ordinary runtime readers.
-        expect(() => listOpenClawRegisteredAgentDatabases({ env: state.env })).toThrow(
-          "legacy agent database registry schema",
-        );
+        // Pending cron and delivery migrations do not change the canonical registry.
+        expect(listOpenClawRegisteredAgentDatabases({ env: state.env })).toEqual([]);
+        expect(snapshotSqliteFiles(state.stateDir)).toEqual(before);
       },
     );
   },

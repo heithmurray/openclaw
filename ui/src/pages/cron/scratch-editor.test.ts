@@ -4,6 +4,7 @@ import { createDeferred } from "../../../../test/helpers/promise.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { CronScratchGetResult } from "../../api/types.ts";
 import type { ApplicationContext } from "../../app/context.ts";
+import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { createGateway, operatorHello } from "./cron-page.test-support.tsx";
 import "./scratch-editor.ts";
@@ -25,7 +26,7 @@ const snapshot = (
 });
 
 async function mount(request: (method: string, params?: unknown) => Promise<unknown>) {
-  const gateway = createGateway({ request } as GatewayBrowserClient, true);
+  const gateway = createGateway(createTestGatewayClient(request), true);
   const editor = document.createElement("openclaw-cron-scratch-editor") as ScratchEditor;
   editor.jobId = "ordinary-job";
   editor.gateway = gateway;
@@ -56,7 +57,7 @@ describe("ordinary automation scratch editor", () => {
     const request = vi.fn(async () => snapshot("Saved notes", 1));
     const editor = document.createElement("openclaw-cron-scratch-editor") as ScratchEditor;
     editor.jobId = "ordinary-job";
-    editor.gateway = createGateway({ request } as GatewayBrowserClient, true);
+    editor.gateway = createGateway(createTestGatewayClient(request), true);
     const [visible, setVisible] = createSignal(false);
     const view = mountSolid(() => {
       const host = document.createElement("div");
