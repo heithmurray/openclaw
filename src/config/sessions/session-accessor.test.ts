@@ -686,6 +686,7 @@ describe("session accessor seam", () => {
     );
 
     const result = await persistSessionTranscriptTurn(scope, {
+      config: {},
       messages: [
         {
           message: { role: "user", content: "default-rotate-hello", timestamp: Date.now() },
@@ -704,10 +705,7 @@ describe("session accessor seam", () => {
 
     expect(result.rejectedReason).toBe("session-rebound");
     await expect(
-      loadTranscriptEvents({
-        ...scope,
-        storePath: expectedStorePath,
-      }),
+      loadTranscriptEvents({ ...scope, storePath: expectedStorePath }),
     ).resolves.not.toContainEqual(
       expect.objectContaining({
         type: "message",

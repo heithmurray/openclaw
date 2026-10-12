@@ -230,6 +230,7 @@ test.each(["current", "scope", "source", "identity", "error-response", "staff"] 
     setRuntimeConfigSnapshot({});
     let releaseProfiles: (() => void) | undefined;
     try {
+      setRuntimeConfigSnapshot({});
       const owner = ensureProfileForEmail("self-reader@example.test");
       const replacement = ensureProfileForEmail("other-reader@example.test");
       releaseProfiles = (await prepareUserProfileCatalog()).release;
@@ -331,6 +332,7 @@ test("users.prefs.get retains its original scope across the preference read", as
   setRuntimeConfigSnapshot({});
   let releaseProfiles: (() => void) | undefined;
   try {
+    setRuntimeConfigSnapshot({});
     const owner = ensureProfileForEmail("retained-preferences@example.test");
     releaseProfiles = (await prepareUserProfileCatalog()).release;
     await invokePreferenceMethod("users.prefs.set", { entries: { "ui.theme": "dark" } }, owner.id);
