@@ -46,6 +46,7 @@ import { prepareCronRunAdmission } from "../run-admission.js";
 import { resolveCronScheduledToolPolicy } from "../scheduled-tool-policy.js";
 import { resolveCronAuthenticatedChannelRequester } from "../tools-allow-provenance.js";
 import type { CronAgentExecutionPhaseUpdate } from "../types.js";
+import { isCommandStyleCronMessage } from "./command-style-prompt.js";
 import { resolveIsolatedCronPromptCacheKey } from "./prompt-cache-key.js";
 import { assertCronRuntimeAuthorityCandidate } from "./run-admission.js";
 import { createCronCandidateExecutionResolver } from "./run-candidate-runtime.js";
@@ -64,7 +65,7 @@ import {
 } from "./run-fallback-policy.js";
 import { setCronSessionAgentHarnessId, setCronSessionRuntimeModel } from "./run-session-state.js";
 import { resolveThinkingSelection } from "./run.runtime.js";
-import type { CronCompletedPromptRun, CronRunnerStartedInfo } from "./run.types.js";
+import type { CronCompletedPromptRun } from "./run.types.js";
 
 type CronEmbeddedRuntime = typeof import("./run-embedded.runtime.js");
 
@@ -74,14 +75,6 @@ const cronEmbeddedRuntimeLoader = createLazyImportLoader<CronEmbeddedRuntime>(
 
 function hasCliSessionReuseMetadata(binding: CliSessionBinding): boolean {
   return Object.entries(binding).some(([key, value]) => key !== "sessionId" && value !== undefined);
-}
-
-const COMMAND_STYLE_CRON_PREFIX =
-  /^(?:(?:[A-Z_][A-Z0-9_]*=\S+\s+)+)?(?:cd\s+\S+|(?:\.{1,2}|~)?\/\S+|[A-Za-z]:[\\/]\S+|(?:bash|bun|cargo|deno|docker|gh|git|go|make|node|npm|npx|pnpm|python|python3|ruby|sh|tsx|uv|zsh)\b)/u;
-
-/** Detects single-line cron prompts that look like shell commands or command invocations. */
-function isCommandStyleCronMessage(message: string): boolean {
-  return !message.trim().includes("\n") && COMMAND_STYLE_CRON_PREFIX.test(message.trim());
 }
 
 /** Creates the model-fallback executor for one isolated cron prompt run. */
@@ -163,12 +156,15 @@ export function createCronPromptExecutor(
   let attemptMediaTaskIds: ReadonlySet<string> = new Set();
   let thinkingCatalog = params.thinkingCatalog;
   let hydratedThinkingSelection: string | undefined;
+  let preparedSessionAvailable = params.preRunSessionPersisted;
   const currentAttemptCommittedMedia = () =>
     hasNewGeneratedMediaTaskForSessionKey(params.runSessionKey, attemptMediaTaskIds);
 
   const resolveCandidateExecution = createCronCandidateExecutionResolver(params);
 
   return async (promptText: string, runStartedAt: number): Promise<CronCompletedPromptRun> => {
+    let canReusePreparedSession = preparedSessionAvailable;
+    preparedSessionAvailable = false;
     // A retry can fail during preparation, before any backend start callback.
     params.lifecycle.beginAttempt();
     const sessionTarget = {
@@ -207,10 +203,6 @@ export function createCronPromptExecutor(
       executionIdentity: params.executionIdentity,
     });
     params.onPromptAdmission(cronAdmission);
-    const onExecutionStarted = async (info?: CronRunnerStartedInfo) => {
-      params.onExecutionStarted?.(info);
-      await params.executionIdentity?.onExecutionStarted?.();
-    };
     // Record the cron source fact at its producer for the run's lifetime so
     // exec-approval creation and standing-grant use never infer job identity
     // from session keys or run ids. Cleared when the run settles. A job whose
@@ -254,6 +246,7 @@ export function createCronPromptExecutor(
         lane: resolveCronAgentLane(params.lane),
         agentId: params.agentId,
         sessionKey: params.runSessionKey,
+        sessionLifecycleRevision: params.cronSession.sessionEntry.lifecycleRevision ?? null,
       },
       harness: {
         workspaceDir: params.workspaceDir,
@@ -289,9 +282,11 @@ export function createCronPromptExecutor(
       sessionOverride: { kind: "preserve" },
       abortSignal: params.abortSignal,
       runCandidate: async (providerOverride, modelOverride, runOptions) => {
+        const preparedSessionPersisted = canReusePreparedSession;
+        canReusePreparedSession = false;
         params.lifecycle.beginAttempt();
         const notifyExecutionStarted = (info?: { lifecycleGeneration?: string }) =>
-          onExecutionStarted({
+          params.onExecutionStarted?.({
             ...info,
             ...(runOptions.isFallbackRetry ? { isFallback: true } : {}),
             provider: providerOverride,
@@ -361,21 +356,29 @@ export function createCronPromptExecutor(
         });
         // The validated candidate that admits detached work owns its continuation
         // even if the provider throws before returning result metadata.
-        setCronSessionRuntimeModel({
+        const modelChanged = setCronSessionRuntimeModel({
           entry: params.cronSession.sessionEntry,
           provider: providerOverride,
           model: modelOverride,
         });
-        setCronSessionAgentHarnessId({
+        const harnessChanged = setCronSessionAgentHarnessId({
           entry: params.cronSession.sessionEntry,
           agentHarnessId: candidateRuntime,
         });
-        // Native bindings can exist before turn/start fails; deletion must retain
-        // the selected owner even when no result metadata is ever returned.
-        await params.persistSessionEntry();
-        await params.persistRunContinuationSession?.(undefined, {
-          cliExecutionProvider: cliExecution ? executionProvider : undefined,
-        });
+        const reusePreparedSession =
+          preparedSessionPersisted &&
+          !runOptions.isFallbackRetry &&
+          !cliExecution &&
+          !modelChanged &&
+          !harnessChanged;
+        // Preparation already saved this embedded candidate and initialized its continuation.
+        // Native bindings and later attempts still publish their owner before execution.
+        if (!reusePreparedSession) {
+          await params.persistSessionEntry();
+          await params.persistRunContinuationSession?.(undefined, {
+            cliExecutionProvider: cliExecution ? executionProvider : undefined,
+          });
+        }
         const bootstrapPromptWarningSignature = bootstrapPromptWarningSignaturesSeen.at(-1);
         // CLI providers can resume provider-native sessions; embedded providers
         // use OpenClaw's transcript/session file plus prompt-cache affinity.

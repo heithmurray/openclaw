@@ -1,4 +1,4 @@
-/** Orchestrates isolated cron prompts, live model switches, and interim-ack retries. */
+/** Executes isolated cron prompts with model fallbacks and interim-ack retries. */
 import {
   getGeneratedMediaTaskIdsForSessionKey,
   hasNewGeneratedMediaTaskForSessionKey,
