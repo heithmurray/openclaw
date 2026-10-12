@@ -7,7 +7,6 @@ import { isInternalRuntimeContextCarrierText } from "../extensions/qa-lab/api.js
 import { loadSubagentRegistryFromSqlite } from "../src/agents/subagents/registry/subagent-registry-state.fixture.test-support.js";
 import type { OpenClawConfig } from "../src/config/types.openclaw.js";
 import { connectGatewayClient, disconnectGatewayClient } from "../src/gateway/test-helpers.e2e.js";
-import { stripEnvelope } from "../src/shared/chat-envelope.js";
 import { closeOpenClawStateDatabaseForTest } from "../src/state/openclaw-state-db.js";
 import {
   writeOpenAiResponsesSse,

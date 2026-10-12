@@ -161,7 +161,6 @@ it("keeps owned running work out of recovery and queue database polling", async 
     defaultAgentId: "main",
     log: logger,
     enqueueSystemEvent() {},
-    enqueueSessionEvent() {},
     runIsolatedAgentJob: async () => ({ status: "ok" }),
     runCommandJob: async () => {
       entered.resolve();

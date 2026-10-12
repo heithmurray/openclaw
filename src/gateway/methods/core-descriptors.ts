@@ -644,7 +644,7 @@ export const CORE_GATEWAY_METHOD_SPECS = [
     "claws.automations.mutate",
     "claws-automations",
     "operator.admin",
-    "2026.9",
+    "2026.10",
     CONTROL_PLANE_WRITE,
   ],
   [

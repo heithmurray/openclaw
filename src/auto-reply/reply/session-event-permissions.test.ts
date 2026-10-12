@@ -97,7 +97,7 @@ async function enqueueCronSafetyNotice(env: NodeJS.ProcessEnv) {
         throw new Error("Unexpected scheduled execution");
       },
     });
-    enqueueCronNotification(
+    await enqueueCronNotification(
       state,
       {
         id: "safety-notice",

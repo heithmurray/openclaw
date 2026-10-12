@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
 import type { AcpRuntime, AcpRuntimeTurnInput } from "@openclaw/acp-core/runtime/types";
+import { expectDefined } from "@openclaw/normalization-core/expect";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { consumeAcpTurnStream } from "../../acp/control-plane/manager.turn-stream.js";
@@ -94,6 +95,7 @@ function queueHookRunner(onStart = vi.fn()) {
     await withCronSessionPreparation(
       {
         storePath: "/synthetic/hook-admission",
+        agentId: expectDefined(params.agentId, "resolved hook agent"),
         sessionKey: params.sessionKey,
         signal: params.abortSignal,
         onInterrupt: () => {},

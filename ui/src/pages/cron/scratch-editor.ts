@@ -58,7 +58,12 @@ class CronScratchEditor extends HTMLElement {
   connectedCallback() {
     this.bindGateway();
     this.unsubscribeLocale = i18n.subscribe(() => this.publish());
-    this.disposePresentation = renderSolid(() => this.renderContent(), this);
+    // A parent effect may insert this element; mount its own root after that effect settles.
+    queueMicrotask(() => {
+      if (this.isConnected && !this.disposePresentation) {
+        this.disposePresentation = renderSolid(() => this.renderContent(), this);
+      }
+    });
   }
 
   disconnectedCallback() {

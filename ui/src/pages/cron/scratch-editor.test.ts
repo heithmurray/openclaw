@@ -1,9 +1,10 @@
-import { flush } from "solid-js";
+import { createEffect, createSignal, flush } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../test/helpers/promise.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { CronScratchGetResult } from "../../api/types.ts";
 import type { ApplicationContext } from "../../app/context.ts";
+import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { createGateway, operatorHello } from "./cron-page.test-support.tsx";
 import "./scratch-editor.ts";
 
@@ -51,6 +52,41 @@ function getButtonByText(editor: Element, label: string): HTMLButtonElement {
 afterEach(() => document.body.replaceChildren());
 
 describe("ordinary automation scratch editor", () => {
+  it("mounts once when a parent effect inserts or reconnects it", async () => {
+    const request = vi.fn(async () => snapshot("Saved notes", 1));
+    const editor = document.createElement("openclaw-cron-scratch-editor") as ScratchEditor;
+    editor.jobId = "ordinary-job";
+    editor.gateway = createGateway({ request } as GatewayBrowserClient, true);
+    const [visible, setVisible] = createSignal(false);
+    const view = mountSolid(() => {
+      const host = document.createElement("div");
+      createEffect(visible, (show) => {
+        if (show) {
+          host.append(editor);
+        } else {
+          editor.remove();
+        }
+      });
+      return host;
+    });
+    try {
+      setVisible(true);
+      await settle();
+      expect(getButtonByText(editor, "Load scratch")).toBeDefined();
+      setVisible(false);
+      await settle();
+      expect(editor.childElementCount).toBe(0);
+      setVisible(true);
+      await settle();
+      expect(editor.querySelectorAll("details")).toHaveLength(1);
+      await click(editor, "Load scratch");
+      expect(editor.querySelector("textarea")?.value).toBe("Saved notes");
+      expect(request).toHaveBeenCalledOnce();
+    } finally {
+      view.unmount();
+    }
+  });
+
   it("preserves a conflicting draft until reload and distinguishes empty scratch from removal", async () => {
     const request = vi
       .fn<GatewayBrowserClient["request"]>()

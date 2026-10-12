@@ -376,12 +376,14 @@ async function runDoctorConfigPreflightOperation(
           repair,
           snapshot,
           options.doctorOnlyStateMigrations === true
-            ? async () => {
+            ? async (currentSnapshot) => {
                 // Roster promotion must see canonical jobs, including implicit monitors
                 // written by a published Gateway without authored heartbeat settings.
                 const { retireHeartbeatWithDoctor } =
                   await import("./doctor-heartbeat-retirement.js");
-                await retireHeartbeatWithDoctor(repair.config);
+                await measurePreflightStep("heartbeat-retirement", () =>
+                  retireHeartbeatWithDoctor(currentSnapshot.sourceConfig),
+                );
               }
             : undefined,
         ),
