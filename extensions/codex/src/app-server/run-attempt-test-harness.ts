@@ -24,6 +24,11 @@ import {
   getActivePluginRegistry,
   setActivePluginRegistry,
 } from "openclaw/plugin-sdk/plugin-test-runtime";
+import {
+  clearRuntimeConfigSnapshot,
+  getRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { drainSessionDiskBudgetWorkers } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { resolvePreferredOpenClawTmpDir } from "openclaw/plugin-sdk/temp-path";
 import { afterAll, afterEach, beforeEach, expect, vi } from "vitest";
@@ -207,6 +212,10 @@ export function runCodexAppServerAttempt(
   params: EmbeddedRunAttemptParams,
   options: RunCodexAppServerAttemptOptions = {},
 ) {
+  if (!getRuntimeConfigSnapshot()) {
+    const config = params.config ?? {};
+    setRuntimeConfigSnapshot(config, config);
+  }
   const turnAccepted = createDeferred<void>();
   registerCodexTestSessionIdentity(params.sessionFile, params.sessionId, params.sessionKey);
   const clientFactory = options.clientFactory ?? codexAppServerClientFactoryForTest;
@@ -736,6 +745,7 @@ export function setupRunAttemptTestHooks(
     clearInternalHooks();
     defaultCodexAppInventoryCache.clear();
     defaultCodexPluginMetadataCache.clear();
+    clearRuntimeConfigSnapshot();
     vi.unstubAllEnvs();
     if (pluginCleanup) {
       expect(pluginCleanup.failures).toEqual([]);
