@@ -200,9 +200,7 @@ export function mutateCronJobsInWorker(
               input.jobMutation.ids[0] !== claw.jobId ||
               !changes.changedIds.has(claw.jobId) ||
               changes.nextById.has(claw.jobId) ||
-              [...changes.changedIds].some(
-                (id) => id !== claw.jobId && !changes.nextById.has(id),
-              ))
+              [...changes.changedIds].some((id) => id !== claw.jobId && !changes.nextById.has(id)))
           ) {
             throw new Error("Portable removal does not own these automation changes.");
           }
