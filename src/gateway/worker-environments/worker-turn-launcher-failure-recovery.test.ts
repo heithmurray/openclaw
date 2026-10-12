@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { WORKER_PROVIDER_REPLAY_MAX_DATA_BYTES } from "../../../packages/gateway-protocol/src/schema/worker-admission.js";
 import { awaitGateBeforeSettlement, createDeferred } from "../../../test/helpers/promise.js";
 import { installSessionPlacementAdmissionProvider } from "../../agents/session-placement-admission.js";
@@ -600,9 +600,13 @@ describe("worker turn launcher failure recovery", () => {
     expect(startReconcile).not.toHaveBeenCalled();
   });
 
-  it.each([false, true])(
-    "preserves process diagnostics and awaits partial persistence (save rejects: %s)",
-    async (saveRejects) => {
+  it.each([
+    { saveRejects: false, pending: false },
+    { saveRejects: true, pending: false },
+    { saveRejects: false, pending: true },
+  ])(
+    "preserves process diagnostics and awaits partial persistence (save rejects: $saveRejects, pending: $pending)",
+    async ({ saveRejects, pending }) => {
       await seedActivePlacement();
       const secret = "$SUPERSECRET123";
       const diagnosis =
@@ -617,6 +621,7 @@ describe("worker turn launcher failure recovery", () => {
       const partialStarted = createDeferred();
       const finishPartial = createDeferred();
       const warning = vi.spyOn(rootLogger, "logWarn").mockImplementation(() => {});
+      onTestFinished(() => warning.mockRestore());
       const persistAbandonedPartial = vi.fn(async (claim: WorkerSessionTurnClaim) => {
         expect(placements.validateTurnClaim(claim)).toBe(true);
         partialStarted.resolve();
@@ -633,6 +638,9 @@ describe("worker turn launcher failure recovery", () => {
           createWorkerTurnTunnel({
             launchTurn: vi.fn(async (request): Promise<SpawnResult> => {
               request.onDispatchReady?.();
+              if (pending) {
+                await placements.markWorkspaceResultPending(request.turnClaim);
+              }
               return {
                 stdout: "",
                 stderr,
@@ -657,6 +665,14 @@ describe("worker turn launcher failure recovery", () => {
         environments,
         placements,
         persistAbandonedPartial,
+        reconcileActivePlacement: async () => {
+          expect(persistAbandonedPartial).toHaveBeenCalledOnce();
+          const [result] = await placements.listPendingWorkspaceResultsAsync();
+          if (!result) {
+            throw new Error("Expected the interrupted worker result");
+          }
+          await placements.failWorkspaceResultAndReleaseTurn(result, new Error("worker stopped"));
+        },
       });
       const failurePrefix = "Cloud worker process failed before completing the turn: ";
       const outcome = provider
@@ -700,15 +716,20 @@ describe("worker turn launcher failure recovery", () => {
       expect(message).not.toContain(secret);
       expect(hasLoneSurrogate(message)).toBe(false);
       const placement = placements.get(SESSION_ID);
-      expect(placement).toMatchObject({
-        state: "failed",
-        recoveryError: message,
-        terminalReason: message,
-        turnClaim: null,
-      });
-      expect(hasLoneSurrogate(placement?.recoveryError ?? "")).toBe(false);
-      expect(stopTunnel).toHaveBeenCalledWith(ENVIRONMENT_ID, OWNER_EPOCH);
-      expect(destroy).toHaveBeenCalledWith(ENVIRONMENT_ID);
+      expect(placement).toMatchObject({ state: "failed", turnClaim: null });
+      if (pending) {
+        expect(placement).toMatchObject({
+          recoveryError: "worker stopped",
+          terminalReason: "worker stopped",
+        });
+        expect(stopTunnel).not.toHaveBeenCalled();
+        expect(destroy).not.toHaveBeenCalled();
+      } else {
+        expect(placement).toMatchObject({ recoveryError: message, terminalReason: message });
+        expect(hasLoneSurrogate(placement?.recoveryError ?? "")).toBe(false);
+        expect(stopTunnel).toHaveBeenCalledWith(ENVIRONMENT_ID, OWNER_EPOCH);
+        expect(destroy).toHaveBeenCalledWith(ENVIRONMENT_ID);
+      }
       expect(warning).toHaveBeenCalledTimes(saveRejects ? 1 : 0);
     },
   );

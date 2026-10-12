@@ -1,4 +1,3 @@
-import { logWarn } from "../../logger.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { reportPlacementTransition } from "./placement-record.js";
 import type {
@@ -51,26 +50,12 @@ export async function failHandedOffTurn(params: {
   placement: ActiveWorkerPlacement;
   turnClaim: WorkerSessionTurnClaim;
   error: unknown;
-  persistAbandonedPartial?: (claim: WorkerTurnPartialIdentity) => Promise<void>;
   terminal?: {
     observedAtMs: number;
     registerRecovery(recover: (assertCurrent?: () => void) => Promise<string | undefined>): void;
   };
 }): Promise<void> {
   const failures = [boundedWorkerError(params.error)];
-  if (params.placement.executionMode === "worker-turn" && params.persistAbandonedPartial) {
-    try {
-      if (params.placements.validateTurnClaim(params.turnClaim)) {
-        await params.persistAbandonedPartial({
-          ...params.turnClaim,
-          sessionKey: params.placement.sessionKey,
-          agentId: params.placement.agentId,
-        });
-      }
-    } catch (error) {
-      logWarn(`Cloud worker partial reply could not be saved: ${boundedWorkerError(error)}`);
-    }
-  }
   let drained: WorkerSessionPlacementRecord;
   try {
     drained = await params.placements.startDrain({

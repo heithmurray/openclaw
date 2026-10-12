@@ -12,6 +12,7 @@ import {
   createDynamicSessionSourceAssertion,
 } from "../../config/sessions/session-source-authority.js";
 import { emitAgentRunStatusEvent } from "../../infra/agent-run-status-events.js";
+import { logWarn } from "../../logger.js";
 import { markDiagnosticRunProgress } from "../../logging/diagnostic-run-activity.js";
 import { getGatewayRestartDrainSignal } from "../../process/gateway-work-admission.js";
 import { createLazyRuntimeModule } from "../../shared/lazy-runtime.js";
@@ -30,6 +31,7 @@ import {
   WorkerRunnerUnavailableError,
   WorkerTunnelOwnerDisconnectedError,
 } from "./tunnel-contract.js";
+import { boundedWorkerError } from "./worker-error.js";
 import {
   assertWorkerPlacementCompactionAllowed,
   claimWorkerTurn,
@@ -634,6 +636,21 @@ export function createWorkerSessionTurnPlacementProvider(options: WorkerTurnLaun
                   requireActivePlacement(reconciled);
                 }
               }
+              if (handedOff && !remoteExec && options.persistAbandonedPartial) {
+                try {
+                  if (options.placements.validateTurnClaim(turnClaim)) {
+                    await options.persistAbandonedPartial({
+                      ...turnClaim,
+                      sessionKey: placement.sessionKey,
+                      agentId: placement.agentId,
+                    });
+                  }
+                } catch (error) {
+                  logWarn(
+                    `Cloud worker partial reply could not be saved: ${boundedWorkerError(error)}`,
+                  );
+                }
+              }
               const pendingWorkspaceResult = await findPendingWorkerWorkspaceResult(
                 options.placements,
                 turnClaim,
@@ -691,7 +708,6 @@ export function createWorkerSessionTurnPlacementProvider(options: WorkerTurnLaun
                   placement,
                   turnClaim,
                   error,
-                  persistAbandonedPartial: options.persistAbandonedPartial,
                   terminal:
                     terminalOwner && terminalAtMs !== undefined
                       ? {
