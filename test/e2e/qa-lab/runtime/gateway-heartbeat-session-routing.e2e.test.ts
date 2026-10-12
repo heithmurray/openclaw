@@ -365,33 +365,7 @@ describe("Gateway heartbeat session routing", () => {
         } satisfies OpenClawConfig & {
           agents: { defaults: { heartbeat: LegacyHeartbeatConfig } };
         };
-        const config = await retireHeartbeatWithDoctor(legacyConfig);
-        expect(config.agents?.defaults).not.toHaveProperty("heartbeat");
-        const receipt = (await readDefaultProactiveJobReceiptsAsync(undefined, ["main"])).main;
-        expect(receipt).toMatchObject({ phase: "complete", jobId: expect.any(String) });
-
-        gateway = await startGatewayWithClient({
-          cfg: config,
-          configPath,
-          token,
-          clientDisplayName: "vitest-gateway-heartbeat-session-routing",
-        });
-        await gateway.server.startupSettled;
-        await disconnectGatewayClient(gateway.client);
-        await gateway.server.close({ reason: "heartbeat catalog-owner restart proof" });
-        gateway = await startGatewayWithClient({
-          cfg: config,
-          configPath,
-          token,
-          clientDisplayName: "vitest-gateway-heartbeat-session-routing-restarted",
-        });
-        await gateway.server.startupSettled;
-        const runtimeConfig = getRuntimeConfigSnapshot();
-        if (!runtimeConfig) {
-          throw new Error("gateway runtime config snapshot was not initialized");
-        }
-        const client = gateway.client;
-
+        // Persist legacy routes before the Gateway captures database creation ownership.
         const seedSession = async (params: {
           sessionId: string;
           sessionKey: string;
@@ -427,6 +401,33 @@ describe("Gateway heartbeat session routing", () => {
           sessionKey: mainSessionKey,
           to: "main-destination",
         });
+
+        const config = await retireHeartbeatWithDoctor(legacyConfig);
+        expect(config.agents?.defaults).not.toHaveProperty("heartbeat");
+        const receipt = (await readDefaultProactiveJobReceiptsAsync(undefined, ["main"])).main;
+        expect(receipt).toMatchObject({ phase: "complete", jobId: expect.any(String) });
+
+        gateway = await startGatewayWithClient({
+          cfg: config,
+          configPath,
+          token,
+          clientDisplayName: "vitest-gateway-heartbeat-session-routing",
+        });
+        await gateway.server.startupSettled;
+        await disconnectGatewayClient(gateway.client);
+        await gateway.server.close({ reason: "heartbeat catalog-owner restart proof" });
+        gateway = await startGatewayWithClient({
+          cfg: config,
+          configPath,
+          token,
+          clientDisplayName: "vitest-gateway-heartbeat-session-routing-restarted",
+        });
+        await gateway.server.startupSettled;
+        const runtimeConfig = getRuntimeConfigSnapshot();
+        if (!runtimeConfig) {
+          throw new Error("gateway runtime config snapshot was not initialized");
+        }
+        const client = gateway.client;
 
         await expect(
           client.request<{ ok: boolean }>("system-event", {

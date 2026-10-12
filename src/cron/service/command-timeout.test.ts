@@ -4,7 +4,7 @@ import {
   createCronRegressionState,
   createIsolatedRegressionJob,
 } from "../../../test/helpers/cron/service-regression-fixtures.js";
-import { createDeferred } from "../../../test/helpers/promise.js";
+import { awaitGateBeforeSettlement, createDeferred } from "../../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { isPidAlive } from "../../shared/pid-alive.js";
 import {
@@ -35,19 +35,21 @@ describe("scheduled command timeouts", () => {
           argv: [
             process.execPath,
             "-e",
-            "console.log('synthetic progress pid=' + process.pid); console.error('synthetic stderr'); setInterval(() => {}, 1000)",
+            "const fs = require('node:fs'); fs.writeSync(1, 'synthetic progress pid=' + process.pid + '\\n'); fs.writeSync(2, 'synthetic stderr\\n'); setInterval(() => {}, 1000)",
           ],
           timeoutSeconds: 1,
         },
       });
       job.delivery = { mode: "webhook", to: "https://example.com/automation" };
       const sendCronWebhook = vi.fn();
+      const commandStarted = createDeferred();
       let command: ReturnType<typeof runCronCommandJob> | undefined;
       const state = createCronRegressionState({
         storePath: path.join(tempDirs.make("cron-command-timeout-"), "jobs.json"),
         runIsolatedAgentJob: vi.fn(),
         runCommandJob: (params) => {
           command = runCronCommandJob(params);
+          commandStarted.resolve();
           return command;
         },
         sendCronWebhook,
@@ -57,6 +59,11 @@ describe("scheduled command timeouts", () => {
       try {
         const run = executeJobCoreWithTimeout(state, job, { runId: job.id, activeJobMarker });
         if (interruption === "operator cancellation") {
+          await awaitGateBeforeSettlement(
+            commandStarted.promise,
+            run,
+            "Scheduled command settled before entering the command runner",
+          );
           requestActiveCronJobCancellation(job.id, "Cancelled by operator.");
         }
         const result = await run;
@@ -85,6 +92,10 @@ describe("scheduled command timeouts", () => {
       } finally {
         try {
           await command;
+          await expect(waitForActiveCronTaskRuns(1_000)).resolves.toEqual({
+            drained: true,
+            active: 0,
+          });
         } finally {
           clearCronJobActive(job.id, activeJobMarker);
         }
@@ -95,6 +106,7 @@ describe("scheduled command timeouts", () => {
   it("bounds settlement while keeping an abort-ignoring command drain-visible", async () => {
     vi.useFakeTimers();
     const command = createDeferred<Awaited<ReturnType<typeof runCronCommandJob>>>();
+    const commandStarted = createDeferred();
     const job = createIsolatedRegressionJob({
       id: "stuck-command",
       name: "stuck command",
@@ -106,7 +118,10 @@ describe("scheduled command timeouts", () => {
     const state = createCronRegressionState({
       storePath: path.join(tempDirs.make("cron-command-settlement-"), "jobs.json"),
       runIsolatedAgentJob: vi.fn(),
-      runCommandJob: () => command.promise,
+      runCommandJob: () => {
+        commandStarted.resolve();
+        return command.promise;
+      },
     });
     let settled = false;
     const run = executeJobCoreWithTimeout(state, job).then((result) => {
@@ -114,6 +129,11 @@ describe("scheduled command timeouts", () => {
       return result;
     });
     try {
+      await awaitGateBeforeSettlement(
+        commandStarted.promise,
+        run,
+        "Scheduled command settled before entering the abort-ignoring runner",
+      );
       await vi.advanceTimersByTimeAsync(1_000);
       expect(settled).toBe(false);
       await vi.advanceTimersByTimeAsync(20_000);
