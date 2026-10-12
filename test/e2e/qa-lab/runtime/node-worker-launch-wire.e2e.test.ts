@@ -101,7 +101,7 @@ describe("node worker launch wire", () => {
       let cleanupFailures: unknown[];
       let phase = "provider startup";
       onTestFailed(() => {
-        console.error(
+        process.stderr.write(
           redactSensitiveText(
             JSON.stringify({
               phase,
@@ -112,10 +112,10 @@ describe("node worker launch wire", () => {
               legacyNodeCommands: legacyWorkerNode?.commands.slice(-20),
               legacyNodeErrors: legacyWorkerNode?.invokeErrors.map(String),
             }),
-          ).slice(0, 5_000),
+          ).slice(0, 5_000) + "\n",
         );
         if (gateway) {
-          console.error(redactSensitiveText(gateway.logs()).slice(-12_000));
+          process.stderr.write(redactSensitiveText(gateway.logs()).slice(-12_000) + "\n");
         }
       });
 
