@@ -42,7 +42,10 @@ import {
   applyUnknownConfigKeyStep,
   prepareDoctorConfigReferenceSource,
 } from "./doctor/shared/config-flow-steps.js";
-import { prepareDoctorConfigMigrationResult } from "./doctor/shared/config-migration-result.js";
+import {
+  prepareDoctorConfigMigrationResult,
+  retainHeartbeatMigrationInput,
+} from "./doctor/shared/config-migration-result.js";
 import {
   applyDoctorConfigMutation,
   type DoctorConfigMutationResult,
@@ -140,7 +143,7 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
   };
   let state: DoctorConfigMutationState = {
     cfg: baseCfg,
-    candidate: structuredClone(baseCfg),
+    candidate: retainHeartbeatMigrationInput(baseCfg, preflight.heartbeatMigrationSource),
     pendingChanges: false,
     fixHints: [],
   };

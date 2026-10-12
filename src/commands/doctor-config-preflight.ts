@@ -97,6 +97,7 @@ async function runDoctorConfigPreflightOperation(
     noteStaleUpdateRuns({ migrateState: stateMigrationsRequested }),
   );
   let modelBillingRouteMigrationSource: OpenClawConfig | undefined;
+  let heartbeatMigrationSource: OpenClawConfig | undefined;
   const cronCodexRuntimePolicyTargets: CronCodexRuntimePolicyTarget[] = [];
   const stateMigrationStepReceipts: LegacyStateMigrationStepReceipt[] = [];
   let postSessionPluginMigration: PreparedPostSessionPluginMigration | undefined;
@@ -383,11 +384,11 @@ async function runDoctorConfigPreflightOperation(
                   await import("./doctor-heartbeat-retirement.js");
                 const { normalizeHeartbeatRepairSource } =
                   await import("./doctor-automatic-heartbeat-repair.js");
+                const source = normalizeHeartbeatRepairSource(currentSnapshot).sourceConfig;
                 await measurePreflightStep("heartbeat-retirement", () =>
-                  retireHeartbeatWithDoctor(
-                    normalizeHeartbeatRepairSource(currentSnapshot).sourceConfig,
-                  ),
+                  retireHeartbeatWithDoctor(source),
                 );
+                heartbeatMigrationSource = source;
               }
             : undefined,
         ),
@@ -409,6 +410,7 @@ async function runDoctorConfigPreflightOperation(
     ...(rosterMigrationOwnerId ? { rosterMigrationOwnerId } : {}),
     ...(deferredPluginMigrations.length > 0 ? { deferredPluginMigrations } : {}),
     ...(modelBillingRouteMigrationSource ? { modelBillingRouteMigrationSource } : {}),
+    ...(heartbeatMigrationSource ? { heartbeatMigrationSource } : {}),
     ...(configSnapshotRead.pluginMetadataSnapshot
       ? { pluginMetadataSnapshot: configSnapshotRead.pluginMetadataSnapshot }
       : {}),

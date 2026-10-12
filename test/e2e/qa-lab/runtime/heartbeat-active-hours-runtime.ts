@@ -4,6 +4,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { OpenClawConfig } from "../../../../src/config/types.openclaw.js";
 import { CronService, type CronEvent } from "../../../../src/cron/service.js";
+import { captureCronSchedulerWake } from "../../../../src/cron/service/scheduler-actor.test-support.js";
 import { loadCronJobsStore } from "../../../../src/cron/store.js";
 import { racePromiseWithAbortSignal } from "../../../../src/infra/abort-signal.js";
 import { formatErrorMessage } from "../../../../src/infra/errors.js";
@@ -74,7 +75,7 @@ function createWriter(options: HeartbeatRuntimeOptions) {
       docsRefs: ["docs/gateway/heartbeat.md"],
       codeRefs: [
         "test/e2e/qa-lab/runtime/heartbeat-active-hours-runtime.ts",
-        "src/cron/service/timer-scheduler.ts",
+        "src/cron/service/scheduler-actor.ts",
         "src/cron/service/timer-execution.ts",
         "src/cron/active-hours.ts",
       ],
@@ -98,12 +99,19 @@ export async function runHeartbeatActiveHoursRuntime(options: HeartbeatRuntimeOp
       const scheduler = new GatewayScheduler({ clock: clock.clock });
       const storePath = state.statePath("cron", "jobs.json");
       const finished: CronEvent[] = [];
+      let onFinished: (() => void) | undefined;
+      let schedulerWork: Promise<unknown> = Promise.resolve();
       let executions = 0;
       const cron = new CronService({
         scheduler,
         storePath,
         cronEnabled: true,
         defaultAgentId: "main",
+        runSchedulerOwned: (run) => {
+          const work = run();
+          schedulerWork = work;
+          return work;
+        },
         log: {
           debug() {},
           info() {},
@@ -121,6 +129,7 @@ export async function runHeartbeatActiveHoursRuntime(options: HeartbeatRuntimeOp
         onEvent: (event) => {
           if (event.action === "finished") {
             finished.push(event);
+            onFinished?.();
           }
         },
       });
@@ -136,7 +145,7 @@ export async function runHeartbeatActiveHoursRuntime(options: HeartbeatRuntimeOp
           payload: { kind: "agentTurn", message: "Perform the scheduled check" },
           delivery: { mode: "none" },
         });
-        await cron.start();
+        let wake = await captureCronSchedulerWake(() => cron.start());
         const fireNext = async (outcome: SchedulerObservation["outcome"]) => {
           const dueAtMs = cron.getJob(job.id)?.state.nextRunAtMs;
           if (typeof dueAtMs !== "number" || dueAtMs <= scheduler.now()) {
@@ -144,10 +153,18 @@ export async function runHeartbeatActiveHoursRuntime(options: HeartbeatRuntimeOp
           }
           const beforeCount = finished.length;
           const beforeExecutions = executions;
-          await racePromiseWithAbortSignal(
-            Promise.resolve(clock.advanceTo(dueAtMs)),
-            AbortSignal.timeout(options.timeoutMs),
-          );
+          const terminal = Promise.withResolvers<void>();
+          onFinished = terminal.resolve;
+          try {
+            await clock.advanceTo(dueAtMs);
+            wake.notify();
+            await racePromiseWithAbortSignal(
+              Promise.all([schedulerWork, terminal.promise]),
+              AbortSignal.timeout(options.timeoutMs),
+            );
+          } finally {
+            onFinished = undefined;
+          }
           const events = finished.slice(beforeCount);
           const expectedStatus = outcome === "active-fire" ? "ok" : "skipped";
           const expectedExecutions = beforeExecutions + (outcome === "active-fire" ? 1 : 0);
@@ -184,7 +201,7 @@ export async function runHeartbeatActiveHoursRuntime(options: HeartbeatRuntimeOp
         await cron.update(job.id, { activeHours: activeHours(false) });
         cron.stop();
         await cron.waitForIdle();
-        await cron.start();
+        wake = await captureCronSchedulerWake(() => cron.start());
         await fireNext("active-fire");
       } finally {
         cron.stop();

@@ -7,7 +7,7 @@ import {
   createTestGatewayScheduler,
 } from "../test-utils/gateway-scheduler-clock.js";
 import { readCronRunHistoryPageForTests } from "./run-history.test-support.js";
-import { CronService } from "./service.js";
+import type { CronService } from "./service.js";
 import {
   createCronServiceWithStateForTest,
   setupCronServiceSuite,
@@ -518,7 +518,7 @@ describe("cron one-shot schedule ownership", () => {
     const runSessionEvent = vi.fn(async () => ({ status: "ok" as const }));
     const onEvent = vi.fn((event: CronEvent) => event);
     const runIsolatedAgentJob = vi.fn(async () => ({ status: "ok" as const }));
-    const cron = new CronService({
+    const { cron, state } = createCronServiceWithStateForTest({
       scheduler: createTestGatewayScheduler(clock.clock),
       storePath,
       cronEnabled: true,
@@ -533,7 +533,8 @@ describe("cron one-shot schedule ownership", () => {
       expect(runSessionEvent).not.toHaveBeenCalled();
       const replacementRunAt = now + DEFAULT_STARTUP_DEFERRED_MISSED_AGENT_JOB_DELAY_MS;
       expect(cron.getJob(job.id)?.state.nextRunAtMs).toBe(replacementRunAt);
-      await clock.advanceTo(replacementRunAt);
+      clock.setTime(replacementRunAt);
+      await onTimer(state);
       expect(runSessionEvent).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({
           job: expect.objectContaining({ id: job.id }),

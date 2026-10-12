@@ -122,8 +122,9 @@ describe("Doctor model billing route migration", () => {
         );
         expect((await readMigratedHeartbeatJob()).payload).toMatchObject({
           kind: "agentTurn",
-          model: "openai/gpt-4o-mini",
+          model: "openai/gpt-5.4-mini",
         });
+        expect(await fs.readFile(configPath, "utf8")).not.toContain('"heartbeat"');
         await observeDoctorConfigStep("post-write-repairs", () => runWriteConfigHealth(ctx));
         expect((await readMigratedHeartbeatJob()).payload).toMatchObject({
           kind: "agentTurn",

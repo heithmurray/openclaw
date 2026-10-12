@@ -39,12 +39,32 @@ export type DoctorConfigPreflightResult = {
   rosterMigrationOwnerId?: string;
   deferredPluginMigrations?: readonly DeferredPluginMigration[];
   modelBillingRouteMigrationSource?: OpenClawConfig;
+  heartbeatMigrationSource?: OpenClawConfig;
   pluginMetadataSnapshot?: PluginMetadataSnapshot;
   cronCodexRuntimePolicyTargets?: CronCodexRuntimePolicyTarget[];
   stateMigrationStepReceipts?: LegacyStateMigrationStepReceipt[];
   postSessionPluginMigration?: PreparedPostSessionPluginMigration;
   postSessionPluginMigrationPlanBound?: boolean;
 };
+
+/** Keep migrated selectors with Doctor's model-policy owner until billing facts are captured. */
+export function retainHeartbeatMigrationInput(
+  config: OpenClawConfig,
+  source: OpenClawConfig | undefined,
+): OpenClawConfig {
+  const candidate = structuredClone(config);
+  if (source?.agents?.defaults?.heartbeat && candidate.agents) {
+    candidate.agents.defaults ??= {};
+    candidate.agents.defaults.heartbeat = structuredClone(source.agents.defaults.heartbeat);
+  }
+  for (const [agentId, entry] of Object.entries(candidate.agents?.entries ?? {})) {
+    const heartbeat = source?.agents?.entries?.[agentId]?.heartbeat;
+    if (heartbeat) {
+      entry.heartbeat = structuredClone(heartbeat);
+    }
+  }
+  return candidate;
+}
 
 /** Preserve migration provenance before repairs, then prepare the post-write health handoff. */
 export function prepareDoctorConfigMigrationResult(

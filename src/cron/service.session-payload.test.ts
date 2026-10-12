@@ -5,12 +5,14 @@ import {
   createTestGatewayScheduler,
 } from "../test-utils/gateway-scheduler-clock.js";
 import { readCronRunRecordsForTests } from "./run-history.test-support.js";
-import { CronService } from "./service.js";
 import type { CronEvent } from "./service.js";
 import {
+  createCronServiceWithStateForTest,
   createStartedCronServiceWithFinishedBarrier,
   setupCronServiceSuite,
 } from "./service.test-harness.js";
+import { MIN_REFIRE_GAP_MS } from "./service/timer-execution-timeout.js";
+import { onTimer } from "./service/timer.test-support.js";
 import { loadCronStore } from "./store.js";
 import { inspectActiveCronRunReceipt } from "./store/run-receipt-store.test-support.js";
 import type { CronJobExecutionResult, CronRunOutcome } from "./types.js";
@@ -109,7 +111,7 @@ describe("unstarted scheduled admission", () => {
       );
       const sendWebhook = vi.fn(async () => ({ status: "delivered" as const }));
       const events: CronEvent[] = [];
-      const cron = new CronService({
+      const { cron, state } = createCronServiceWithStateForTest({
         scheduler,
         storePath: store.storePath,
         cronEnabled: true,
@@ -149,7 +151,8 @@ describe("unstarted scheduled admission", () => {
         });
         await cron.start();
         const dueAt = cron.getJob(job.id)!.state.nextRunAtMs!;
-        await clock.advanceTo(dueAt);
+        clock.setTime(dueAt);
+        await onTimer(state);
         const retained = (await loadCronStore(store.storePath)).jobs.find(
           (entry) => entry.id === job.id,
         )!;
@@ -174,10 +177,9 @@ describe("unstarted scheduled admission", () => {
         expect(sendWebhook).not.toHaveBeenCalled();
         expect(run).toHaveBeenCalledTimes(boundary === "preflight" ? 0 : 1);
         busy = false;
-        const recheckAt = scheduler.nextWakeAtMs;
-        expect(recheckAt).toBeTypeOf("number");
-        expect(recheckAt).toBeGreaterThan(scheduler.now());
-        await clock.advanceTo(recheckAt!);
+        expect((await cron.status()).nextWakeAtMs).toBe(dueAt);
+        clock.setTime(scheduler.now() + MIN_REFIRE_GAP_MS);
+        await onTimer(state);
         expect(run).toHaveBeenCalledTimes(boundary === "preflight" ? 1 : 2);
         expect(sendWebhook).toHaveBeenCalledOnce();
         expect(readCronRunRecordsForTests(job.id)).toHaveLength(1);
@@ -212,7 +214,7 @@ describe("unstarted scheduled admission", () => {
       };
       const run = vi.fn(async () => result);
       const evaluate = vi.fn(async () => ({ kind: "evaluated" as const, fire: true }));
-      const cron = new CronService({
+      const { cron, state } = createCronServiceWithStateForTest({
         scheduler,
         storePath: store.storePath,
         cronEnabled: true,
@@ -237,7 +239,8 @@ describe("unstarted scheduled admission", () => {
         });
         await cron.start();
         const dueAt = cron.getJob(job.id)!.state.nextRunAtMs!;
-        await clock.advanceTo(dueAt);
+        clock.setTime(dueAt);
+        await onTimer(state);
         const settled = cron.getJob(job.id)!;
         expect(settled.state.lastRunStatus).toBe("skipped");
         expect(settled.state.nextRunAtMs).toBeGreaterThan(dueAt);

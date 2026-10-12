@@ -8,10 +8,16 @@ import {
 import { readCronRunHistoryPageForTests } from "./run-history.test-support.js";
 import type { CronEvent } from "./service.js";
 import { CronService } from "./service.js";
-import { setupCronServiceSuite, writeCronStoreSnapshot } from "./service.test-harness.js";
+import {
+  createCronServiceWithStateForTest,
+  setupCronServiceSuite,
+  writeCronStoreSnapshot,
+} from "./service.test-harness.js";
 import { waitForActiveCronTaskRuns } from "./service/active-run-cancellation.js";
 import { createCronRunHandle, finishCronRun } from "./service/run-history.js";
+import { waitForCronRunQueue } from "./service/run-queue.js";
 import { createCronServiceState, type CronServiceDeps } from "./service/state.js";
+import { onTimer } from "./service/timer.test-support.js";
 import { loadCronStore } from "./store.js";
 import { cronStoreKey } from "./store/key.js";
 import { inspectActiveCronRunReceipt } from "./store/run-receipt-store.test-support.js";
@@ -897,7 +903,7 @@ describe("cron trigger cadence", () => {
       scheduler,
       nowMs: clock.clock.now,
     };
-    const cron = new CronService(deps);
+    const { cron, state } = createCronServiceWithStateForTest(deps);
     try {
       await cron.start();
       const catchupAt = nowMs + 120_000;
@@ -908,10 +914,13 @@ describe("cron trigger cadence", () => {
         lastRunAtMs: nowMs - 60_000,
       });
       vi.setSystemTime(catchupAt - 1);
-      await clock.advanceTo(catchupAt - 1);
+      clock.setTime(catchupAt - 1);
+      await onTimer(state);
       expect(evaluateCronTrigger).not.toHaveBeenCalled();
       vi.setSystemTime(catchupAt);
-      await clock.advanceTo(catchupAt);
+      clock.setTime(catchupAt);
+      await onTimer(state);
+      await waitForCronRunQueue(state);
       expect(evaluateCronTrigger).toHaveBeenCalledOnce();
       expect(cron.getJob("missed-watcher")?.state).toMatchObject({
         nextRunAtMs: catchupAt + 30_000,
