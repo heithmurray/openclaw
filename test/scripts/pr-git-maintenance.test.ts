@@ -188,7 +188,6 @@ describePosix("scripts/pr Git maintenance ownership", () => {
         child.once("error", reject);
         child.once("close", resolve);
       });
-      let ownerOid = "";
       try {
         await withinTest(
           Promise.race([
@@ -200,7 +199,7 @@ describePosix("scripts/pr Git maintenance ownership", () => {
           ]),
           signal,
         );
-        ownerOid = fixture.git(["rev-parse", lockRef]);
+        const ownerOid = fixture.git(["rev-parse", lockRef]);
         const owner = fixture.git(["cat-file", "blob", ownerOid]);
         const pgid = Number(/^pgid=(\d+)$/m.exec(owner)?.[1]);
         const hookState = JSON.parse(readFileSync(fixture.ready, "utf8")) as {
