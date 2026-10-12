@@ -422,6 +422,7 @@ async function executeDetachedCronJob(
         }),
       };
     }
+    options?.onExecutionStarted?.();
     const res = await state.deps.runCommandJob({
       deliveryAttemptFence: options?.deliveryAttemptFence ?? null,
       job,

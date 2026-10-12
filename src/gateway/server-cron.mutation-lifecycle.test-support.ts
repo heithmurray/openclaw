@@ -12,6 +12,11 @@ import { saveCronStoreInDatabase } from "../cron/store/save.kernel.js";
 import type { CronJobCreate } from "../cron/types.js";
 import type { RunExit } from "../process/supervisor/types.js";
 import { runOpenClawStateWriteTransaction } from "../state/openclaw-state-db.js";
+import {
+  beginAgentDeletionJournal,
+  removeAgentDeletionJournal,
+} from "../test-utils/agent-deletion-journal.js";
+import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import type { buildGatewayCronService } from "./server-cron.js";
 
 type CronFixture = ReturnType<typeof buildGatewayCronService>;
@@ -52,6 +57,74 @@ export function registerGatewayCronMutationAuthorityTests({
   createCronService,
   addCronJob,
 }: CronMutationHarness) {
+  it("refuses ordinary automations when agent deletion begins before commit until rollback", async () => {
+    await withOpenClawTestState({ label: "cron-ordinary-retirement" }, async (fixture) => {
+      const cfg: OpenClawConfig = {
+        cron: { enabled: false },
+        agents: { ownership: "explicit", entries: { main: {}, retiring: {} } },
+      };
+      const state = loadCronService(cfg);
+      const addJob = () =>
+        addCronJob(
+          state,
+          "ordinary-retiring-owner",
+          { kind: "agentTurn", message: "Retain this ordinary automation" },
+          { agentId: "retiring", enabled: false, schedule: { kind: "every", everyMs: 60_000 } },
+        );
+      const held = holdNextCronMutation();
+      let deletion: ReturnType<typeof beginAgentDeletionJournal> | undefined;
+      let pending: Promise<unknown> | undefined;
+      try {
+        const result = addJob().then(
+          (job) => ({ ok: true as const, job }),
+          (error: unknown) => ({ ok: false as const, error }),
+        );
+        pending = result;
+        await held.entered.promise;
+        deletion = beginAgentDeletionJournal({
+          agentId: "retiring",
+          operationId: "ordinary-retirement",
+          agentDir: fixture.agentDir("retiring"),
+          workspaceDir: fixture.path("workspace-retiring"),
+          sessionsDir: fixture.sessionsDir("retiring"),
+          deleteFiles: false,
+        });
+        held.release.resolve();
+        expect(await result).toMatchObject({
+          ok: false,
+          error: {
+            name: "CronAgentDeletionBlockedError",
+            message: "cron job agent is unavailable: retiring",
+          },
+        });
+        expect((await loadCronStore(state.storePath)).jobs).toEqual([]);
+        expect(removeAgentDeletionJournal("retiring", deletion.operationId)).toBe(true);
+        deletion = undefined;
+        const created = await addJob();
+        expect((await loadCronStore(state.storePath)).jobs).toContainEqual(
+          expect.objectContaining({
+            id: created.id,
+            agentId: "retiring",
+            enabled: false,
+            payload: {
+              kind: "agentTurn",
+              message: "Retain this ordinary automation",
+              toolsAllow: ["*"],
+            },
+          }),
+        );
+      } finally {
+        held.release.resolve();
+        await pending;
+        held.restore();
+        if (deletion) {
+          removeAgentDeletionJournal("retiring", deletion.operationId);
+        }
+        await state.cron.stopAndDrain?.();
+      }
+    });
+  });
+
   it.each(["update", "updateWithPrecondition"] as const)(
     "forwards authority options through the %s lifecycle wrapper",
     async (method) => {

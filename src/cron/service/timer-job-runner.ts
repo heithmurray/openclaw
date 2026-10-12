@@ -337,14 +337,16 @@ async function executeJobCoreWithTimeoutUnfinalized(
     }
     const timeout = createDeferredCore<CronRunTimeout>();
 
-    // Agent runs report setup phases separately; defer the wall-clock
-    // timeout until the runner starts so cold setup gets a clearer failure reason.
+    // Preparation has its own bounded guard; payload execution gets the full configured deadline.
     const deferTimeoutUntilExecutionStart =
-      job.payload.kind === "agentTurn" || job.payload.kind === "systemEvent";
+      job.payload.kind === "agentTurn" ||
+      job.payload.kind === "systemEvent" ||
+      job.payload.kind === "command";
     const watchdog =
       jobTimeoutMs === undefined
         ? undefined
         : createCronAgentWatchdog({
+            executionKind: job.payload.kind === "command" ? "command" : "agent",
             deferUntilRunner: deferTimeoutUntilExecutionStart,
             jobTimeoutMs,
             triggerTimeout: (reason) => {
