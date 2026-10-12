@@ -8,7 +8,7 @@ retired; Doctor transfers still-relevant pending outcomes idempotently into
 ordinary session context before removing each verified source row. Existing
 session deletion and retention continue to own the remaining inert rows.
 
-Keep agent schema 25 during this cutover, without an additional agent migration.
+Keep agent schema 26 during this cutover, without an additional agent migration.
 Removing the table requires a separately approved agent-schema migration; the
 shared-state policy fence does not authorize that cleanup. Its owner must remove
 the table declaration, generated types, and
