@@ -5,11 +5,16 @@ import { Type } from "typebox";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../../config/runtime-snapshot.js";
+import {
   appendTranscriptMessages,
   appendTranscriptMessageSync,
   upsertSessionEntryCore,
 } from "../../config/sessions/session-accessor.js";
 import { resolveSqliteTargetFromSessionStorePath } from "../../config/sessions/session-sqlite-target.js";
+import type { OpenClawConfig } from "../../config/types.js";
 import { resetDiagnosticEventsForTest } from "../../infra/diagnostic-events.js";
 import { createDiagnosticTraceContext } from "../../infra/diagnostic-trace-context.js";
 import { resetDiagnosticRunActivityForTest } from "../../logging/diagnostic-run-activity.js";
@@ -53,8 +58,9 @@ const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
 );
 let fixtureDir: string;
 let sessionSequence = 0;
-function createSessionScope(label: string) {
+function createSessionScope(label: string, config: OpenClawConfig = {}) {
   fixtureDir ??= tempDirs.make("openclaw-code-source-projection-");
+  setRuntimeConfigSnapshot(config);
   const sessionId = `${label}-${++sessionSequence}`;
   return {
     dir: fixtureDir,
@@ -75,6 +81,7 @@ afterEach(() => {
   resetDiagnosticRunActivityForTest();
   resetGlobalHookRunner();
   resetSecretRedactionRegistryForTest();
+  clearRuntimeConfigSnapshot();
 });
 
 describe("AgentSession runtime and transcript projections", () => {
@@ -122,8 +129,8 @@ describe("AgentSession runtime and transcript projections", () => {
   it.each(sourceCases)(
     "preserves $label through SQLite close, reopen, and the next provider context",
     async ({ args, outcome, label }) => {
-      const { dir, scope } = createSessionScope("source-projection");
       const config = { logging: { redactPatterns: ["fixture-custom-source-value"] } };
+      const { dir, scope } = createSessionScope("source-projection", config);
       registerSecretValueForRedaction(registeredLiteral);
       await upsertSessionEntryCore(scope, { sessionId: scope.sessionId, updatedAt: 1 });
       const manager = SessionManager.open(scope, dir);
