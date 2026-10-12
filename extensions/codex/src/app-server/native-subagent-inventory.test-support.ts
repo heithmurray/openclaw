@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { createAdmittedHostCapabilityTestFixture } from "openclaw/plugin-sdk/plugin-test-runtime";
+import {
+  getRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { captureSessionEntryCurrentCheckAsync } from "openclaw/plugin-sdk/session-binding-runtime";
 import { getSessionEntry, resolveStorePath } from "openclaw/plugin-sdk/session-store-runtime";
 import { Type } from "typebox";
@@ -92,6 +96,10 @@ export async function fixture() {
       runId: `inventory-${sequence}`,
     });
     params.agentId = identity.agentId;
+    if (!getRuntimeConfigSnapshot()) {
+      const config = params.config ?? {};
+      setRuntimeConfigSnapshot(config, config);
+    }
     const host = await createAdmittedHostCapabilityTestFixture(params, { gatewayContext: true });
     onTestFinished(() => {
       host.closeHost();

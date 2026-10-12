@@ -2,6 +2,10 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { runWithAsyncWorkResources } from "openclaw/plugin-sdk/agent-harness-tool-runtime";
 import { createAgentHarnessHostCapabilitiesForTest } from "openclaw/plugin-sdk/plugin-test-runtime";
+import {
+  getRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { expect, vi } from "vitest";
 import {
   ensureCodexAppServerClientRuntime,
@@ -127,6 +131,10 @@ function runCompactionWithTestHost(
   params: CompactTestParams,
   options: Parameters<typeof maybeCompactCodexAppServerSessionImpl>[1],
 ) {
+  if (!getRuntimeConfigSnapshot()) {
+    const config = params.config ?? {};
+    setRuntimeConfigSnapshot(config, config);
+  }
   if (params.hostCapabilities) {
     return maybeCompactCodexAppServerSessionImpl(
       { ...params, hostCapabilities: params.hostCapabilities },

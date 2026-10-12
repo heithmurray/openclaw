@@ -173,7 +173,7 @@ async function execute<Key extends keyof PluginStateWorkerOperations>(
             : [typedCommand.input.key];
       const cachedEntries =
         typedCommand.type === "pluginState.entries"
-          ? readPluginStateEntriesCache(identity, typedCommand.input)
+          ? readPluginStateEntriesCache(identity, typedCommand.input, writeRevision)
           : undefined;
       const cached = keys.map((key) =>
         readPluginStateObservationCache(identity, { ...typedCommand.input, key }, writeRevision),
@@ -241,7 +241,11 @@ async function execute<Key extends keyof PluginStateWorkerOperations>(
           writeRevision,
         );
       } else if (typedCommand.type === "pluginState.entries") {
-        installEntries = preparePluginStateEntriesCacheRead(identity, typedCommand.input);
+        installEntries = preparePluginStateEntriesCacheRead(
+          identity,
+          typedCommand.input,
+          writeRevision,
+        );
       }
     }
     // A write-only await here would let later reads overtake it before broker admission.

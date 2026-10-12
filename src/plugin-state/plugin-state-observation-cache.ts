@@ -20,6 +20,7 @@ type NamespaceEntry = {
   keyPrefix: string;
   entries?: PluginStateEntry<unknown>[];
   bytes: number;
+  writeRevision?: number;
 };
 
 const state = resolveGlobalSingleton(Symbol.for("openclaw.pluginStateObservationCache"), () => {
@@ -70,14 +71,30 @@ const state = resolveGlobalSingleton(Symbol.for("openclaw.pluginStateObservation
       }
     }
     if (change.kind === "unknown" || change.kind === "committed") {
+      const writeRevision = change.kind === "committed" ? change.receipt.writeRevision : undefined;
+      const knownKeys =
+        change.kind === "committed" &&
+        change.receipt.facts.size > 0 &&
+        [...change.receipt.facts.values()].every((fact) => fact.kind !== "unknown")
+          ? [...change.receipt.facts.keys()]
+          : undefined;
       for (const key of namespaces.keys()) {
         const entry = namespaces.peek(key)!;
+        if (entry.identity !== identity) {
+          continue;
+        }
+        // Only fully described sibling writes can carry a snapshot across its next revision.
         if (
-          entry.identity === identity &&
-          (change.kind === "unknown" ||
-            [...change.receipt.facts.keys()].some((factKey) => factKey.startsWith(entry.keyPrefix)))
+          !knownKeys ||
+          writeRevision === undefined ||
+          entry.writeRevision === undefined ||
+          (writeRevision !== entry.writeRevision &&
+            writeRevision !== ((entry.writeRevision + 1) | 0)) ||
+          knownKeys.some((factKey) => factKey.startsWith(entry.keyPrefix))
         ) {
           namespaces.delete(key);
+        } else {
+          entry.writeRevision = writeRevision;
         }
       }
     }
@@ -137,28 +154,38 @@ export function preparePluginStateObservationCacheRead(
   };
 }
 
-export function readPluginStateEntriesCache(identity: string, key: Omit<Key, "key">) {
-  if (state.pending.has(identity)) {
+export function readPluginStateEntriesCache(
+  identity: string,
+  key: Omit<Key, "key">,
+  writeRevision: number | undefined,
+) {
+  const entry = state.namespaces.get(JSON.stringify([identity, key.pluginId, key.namespace]));
+  if (
+    state.pending.has(identity) ||
+    writeRevision === undefined ||
+    entry?.writeRevision !== writeRevision
+  ) {
     return undefined;
   }
-  const entries = state.namespaces.get(
-    JSON.stringify([identity, key.pluginId, key.namespace]),
-  )?.entries;
+  const entries = entry.entries;
   if (!entries) {
     return undefined;
   }
   const now = Date.now();
-  return structuredClone(
-    entries.filter((entry) => entry.expiresAt == null || entry.expiresAt > now),
-  );
+  return structuredClone(entries.filter((row) => row.expiresAt == null || row.expiresAt > now));
 }
 
-export function preparePluginStateEntriesCacheRead(identity: string, key: Omit<Key, "key">) {
+export function preparePluginStateEntriesCacheRead(
+  identity: string,
+  key: Omit<Key, "key">,
+  writeRevision: number | undefined,
+) {
   const id = JSON.stringify([identity, key.pluginId, key.namespace]);
   const entry: NamespaceEntry = {
     identity,
     keyPrefix: `${JSON.stringify([key.pluginId, key.namespace]).slice(0, -1)},`,
     bytes: 128,
+    writeRevision,
   };
   state.namespaces.set(id, entry);
   return (entries: PluginStateEntry<unknown>[]) => {

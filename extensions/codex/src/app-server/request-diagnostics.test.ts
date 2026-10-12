@@ -2,8 +2,14 @@ import { embeddedAgentLog } from "openclaw/plugin-sdk/agent-harness-registration
 import * as diagnostics from "openclaw/plugin-sdk/diagnostic-runtime";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { runWithDiagnosticTraceContext } from "openclaw/plugin-sdk/plugin-test-runtime";
+import {
+  clearRuntimeConfigSnapshot,
+  getRuntimeConfigSnapshot,
+  getRuntimeConfigSourceSnapshot,
+  setRuntimeConfigSnapshot,
+} from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { resetLogger, setLoggerOverride } from "openclaw/plugin-sdk/runtime-env";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { CodexAppServerRpcError } from "./rpc-error.js";
 import type { CodexAppServerClientOptions } from "./shared-client.js";
 
@@ -107,6 +113,20 @@ describe("scoped Codex timeout diagnostics", () => {
   });
 
   it("retains concurrent awaited methods and the existing trace without retaining payloads", async () => {
+    const config = {};
+    const previous = getRuntimeConfigSnapshot();
+    const previousSource = getRuntimeConfigSourceSnapshot();
+    setRuntimeConfigSnapshot(config, config);
+    onTestFinished(() => {
+      if (getRuntimeConfigSnapshot() !== config) {
+        return;
+      }
+      if (previous) {
+        setRuntimeConfigSnapshot(previous, previousSource ?? undefined);
+      } else {
+        clearRuntimeConfigSnapshot();
+      }
+    });
     const entered = createDeferred<void>();
     const pending = createDeferred<object>();
     const privateText = "synthetic-private-prompt-token-environment";
@@ -129,7 +149,7 @@ describe("scoped Codex timeout diagnostics", () => {
           );
           return await Promise.all(calls);
         },
-        { sessionId: privateText, sessionKey: privateText },
+        { config, sessionId: privateText, sessionKey: privateText },
       ),
     );
     await entered.promise;

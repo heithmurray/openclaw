@@ -2,6 +2,10 @@ import path from "node:path";
 import type { AgentMessage } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { SessionManager } from "openclaw/plugin-sdk/agent-sessions";
 import { loadUserTurnTranscriptRecorderFactoryForTest } from "openclaw/plugin-sdk/plugin-test-runtime";
+import {
+  getRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { describe, expect, it, vi } from "vitest";
 import { readMirroredSessionHistoryMessages } from "./attempt-context.js";
 import type { CodexTurnStartParams } from "./protocol.js";
@@ -30,6 +34,10 @@ describe("Codex transient retry continuation", () => {
     "carries the current request past its admission fence ($mode, completed work: $completedWork)",
     async ({ mode, completedWork }) => {
       const params = createTestParams();
+      if (!getRuntimeConfigSnapshot()) {
+        const config = params.config ?? {};
+        setRuntimeConfigSnapshot(config, config);
+      }
       params.agentId = "main";
       await attachSqliteSessionTarget(params, path.join(tempDir, "sessions.sqlite"), "session-1");
       const target = {

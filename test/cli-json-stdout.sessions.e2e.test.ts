@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { withTempHome } from "openclaw/plugin-sdk/test-env";
 import { describe, expect, it } from "vitest";
+import { resolveSessionStorePathCore } from "../src/config/sessions/paths.js";
 import { runBuiltCli } from "./cli-json-stdout.test-support.js";
 
 async function seedTrajectorySession(tempHome: string, sessionKey: string) {
@@ -15,12 +16,13 @@ async function seedTrajectorySession(tempHome: string, sessionKey: string) {
     OPENCLAW_STATE_DIR: stateDir,
   };
   delete env.OPENCLAW_HOME;
+  const storePath = resolveSessionStorePathCore(undefined, { agentId: "main", env });
   const [{ upsertSessionEntryCore }, { closeOpenClawAgentDatabaseByPath }] = await Promise.all([
     import("../src/config/sessions/session-accessor.js"),
     import("../src/state/openclaw-agent-db.js"),
   ]);
   await upsertSessionEntryCore(
-    { agentId: "main", env, sessionKey },
+    { agentId: "main", env, sessionKey, storePath },
     { sessionId: "trajectory-process-session", updatedAt: 1 },
   );
   closeOpenClawAgentDatabaseByPath(

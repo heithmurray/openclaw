@@ -7,6 +7,7 @@ import { emitAgentEvent, getAgentEventLifecycleGeneration } from "../../infra/ag
 import { clearAgentRunContext, registerAgentRunContext } from "../../infra/agent-run-registry.js";
 import { AsyncWorkScope } from "../../shared/async-work-scope.js";
 import { drainGlobalSingletonLifecycleState } from "../../shared/global-singleton.js";
+import { prepareUserProfileCatalog } from "../../state/user-profile-list.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { registerQueuedChatTurn, type QueuedChatTurnMap } from "../chat-queued-turns.js";
 import { agentHandlers } from "../server-methods/agent.js";
@@ -266,6 +267,7 @@ describe("agent.wait gateway dedupe observations", () => {
       setRuntimeConfigSnapshot(cfg);
       const owner = roleClient("none", "queued-owner");
       const other = roleClient("none", "queued-other");
+      using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
       const session = {
         sessionKey: "agent:main:queued-visible",
         sessionId: "queued-visible-session",
@@ -343,6 +345,7 @@ describe("agent.wait gateway dedupe observations", () => {
         const cfg = rolePolicyConfig();
         setRuntimeConfigSnapshot(cfg);
         const owner = roleClient("none", "timeout-owner");
+        using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
         const session = {
           sessionKey: "agent:main:timeout-rotation",
           sessionId: "original-session",

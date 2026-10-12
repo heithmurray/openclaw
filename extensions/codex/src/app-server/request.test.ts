@@ -1,14 +1,21 @@
 // Codex tests cover request plugin behavior.
 import path from "node:path";
 import { isNativeError } from "node:util/types";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
+import {
+  clearRuntimeConfigSnapshot,
+  getRuntimeConfigSnapshot,
+  getRuntimeConfigSourceSnapshot,
+  setRuntimeConfigSnapshot,
+} from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { captureSessionEntryCurrentCheckAsync } from "openclaw/plugin-sdk/session-binding-runtime";
 import {
   clearSessionStoreCacheForTest,
   upsertSessionEntry,
 } from "openclaw/plugin-sdk/session-store-runtime";
 import { useSessionStoreTempDirs } from "openclaw/plugin-sdk/sqlite-runtime-testing";
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { CodexAppServerRpcError } from "./rpc-error.js";
 import { createClientHarness } from "./test-support.js";
 
@@ -35,6 +42,22 @@ const { listAllCodexAppServerModels } = await import("./models.js");
 
 const expectDeadlineOptions = () =>
   expect.objectContaining({ timeoutMs: expect.any(Number), signal: expect.anything() });
+
+function prepareRequestConfig(config: OpenClawConfig) {
+  const previous = getRuntimeConfigSnapshot();
+  const previousSource = getRuntimeConfigSourceSnapshot();
+  setRuntimeConfigSnapshot(config, config);
+  onTestFinished(() => {
+    if (getRuntimeConfigSnapshot() !== config) {
+      return;
+    }
+    if (previous) {
+      setRuntimeConfigSnapshot(previous, previousSource ?? undefined);
+    } else {
+      clearRuntimeConfigSnapshot();
+    }
+  });
+}
 
 describe("requestCodexAppServerJson sandbox guard", () => {
   const sessionDirs = useSessionStoreTempDirs(afterAll, "openclaw-codex-preflight-");
@@ -96,11 +119,13 @@ describe("requestCodexAppServerJson sandbox guard", () => {
   });
 
   it("fails closed before raw app-server bypass methods in sandboxed sessions", async () => {
+    const config: OpenClawConfig = { agents: { defaults: { sandbox: { mode: "all" } } } };
+    prepareRequestConfig(config);
     await expect(
       requestCodexAppServerJson({
         method: "command/exec",
         requestParams: { command: ["sh", "-lc", "id"] },
-        config: { agents: { defaults: { sandbox: { mode: "all" } } } },
+        config,
         sessionKey: "sandboxed-session",
       }),
     ).rejects.toThrow(
@@ -111,12 +136,14 @@ describe("requestCodexAppServerJson sandbox guard", () => {
   });
 
   it("fails closed before raw app-server bypass methods when exec host=node is active", async () => {
+    const config: OpenClawConfig = { tools: { exec: { host: "node", node: "worker-1" } } };
+    prepareRequestConfig(config);
     for (const method of ["command/exec", "process/spawn"]) {
       await expect(
         requestCodexAppServerJson({
           method,
           requestParams: { command: ["sh", "-lc", "id"] },
-          config: { tools: { exec: { host: "node", node: "worker-1" } } },
+          config,
           sessionKey: "node-session",
         }),
       ).rejects.toThrow(
@@ -229,6 +256,7 @@ describe("requestCodexAppServerJson sandbox guard", () => {
   ])(
     "fails closed for unlisted app methods in $description sessions",
     async ({ config, sessionKey, reason }) => {
+      prepareRequestConfig(config);
       await expect(
         requestCodexAppServerJson({
           method: "app/activate",
@@ -348,6 +376,8 @@ describe("requestCodexAppServerJson sandbox guard", () => {
   });
 
   it("allows sandbox-pinned thread starts in sandboxed sessions", async () => {
+    const config: OpenClawConfig = { agents: { defaults: { sandbox: { mode: "all" } } } };
+    prepareRequestConfig(config);
     const request = vi.fn(async () => ({ thread: { id: "thread-1" }, model: "gpt-5.5" }));
     sharedClientMocks.getSharedCodexAppServerClient.mockResolvedValue({ request });
     const params = {
@@ -359,7 +389,7 @@ describe("requestCodexAppServerJson sandbox guard", () => {
       requestCodexAppServerJson({
         method: "thread/start",
         requestParams: params,
-        config: { agents: { defaults: { sandbox: { mode: "all" } } } },
+        config,
         sessionKey: "sandboxed-session",
       }),
     ).resolves.toEqual({ thread: { id: "thread-1" }, model: "gpt-5.5" });
@@ -857,6 +887,11 @@ describe("requestCodexAppServerJson sandbox guard", () => {
   });
 
   it("blocks thread starts with sandbox environments when exec host=node is active", async () => {
+    const config: OpenClawConfig = {
+      agents: { defaults: { sandbox: { mode: "all" } } },
+      tools: { exec: { host: "node", node: "worker-1" } },
+    };
+    prepareRequestConfig(config);
     const params = {
       cwd: "/workspace",
       environments: [{ environmentId: "openclaw-sandbox-abc123", cwd: "/workspace" }],
@@ -866,10 +901,7 @@ describe("requestCodexAppServerJson sandbox guard", () => {
       requestCodexAppServerJson({
         method: "thread/start",
         requestParams: params,
-        config: {
-          agents: { defaults: { sandbox: { mode: "all" } } },
-          tools: { exec: { host: "node", node: "worker-1" } },
-        },
+        config,
         sessionKey: "node-session",
       }),
     ).rejects.toThrow(

@@ -4,6 +4,7 @@ import * as agentHarnessRuntime from "openclaw/plugin-sdk/agent-harness-runtime"
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { initializeGlobalHookRunner } from "openclaw/plugin-sdk/hook-runtime";
 import { createMockPluginRegistry } from "openclaw/plugin-sdk/plugin-test-runtime";
+import { setRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { describe, expect, it, vi } from "vitest";
 import { readAttemptTerminal } from "./attempt-terminal.test-helper.js";
 import { createCodexTestHostCapabilities } from "./host-capability.test-support.js";
@@ -79,6 +80,8 @@ describe("Codex participant native admission", () => {
         path.join(tempDir, "participant-model-hooks-workspace"),
       );
       params.sessionKey = undefined;
+      const config = params.config ?? {};
+      setRuntimeConfigSnapshot(config, config);
       if (policy === "token-sharing") {
         const runtimePlan = createCodexRuntimePlanFixture();
         params.runtimePlan = {
@@ -554,6 +557,8 @@ describe("Codex native hook Gateway fallback", () => {
     expect(listeners.size).toBe(0);
   });
   it("keeps resumed native hook policy available when the direct listener fails", async () => {
+    // Protocol events drive this policy case; cold preparation does not own its clock.
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
     const sessionFile = path.join(tempDir, "listener-unavailable.jsonl");
     const workspaceDir = path.join(tempDir, "listener-unavailable-workspace");
     await writeCodexAppServerBinding(sessionFile, {
@@ -567,14 +572,10 @@ describe("Codex native hook Gateway fallback", () => {
         web_search: "disabled",
       }),
     });
-    const started = createDeferred<void>();
     const harness = createStartedThreadHarness(
       async (method) => {
         if (method === "thread/resume") {
           return threadStartResult("thread-existing");
-        }
-        if (method === "turn/start") {
-          started.resolve();
         }
         return undefined;
       },
@@ -602,7 +603,7 @@ describe("Codex native hook Gateway fallback", () => {
       nativeHookRelay: { enabled: true, events: ["pre_tool_use"] },
     });
     try {
-      await Promise.race([started.promise, run.then(() => undefined)]);
+      await run.waitForTurnAccepted();
       const request = harness.requests.find(({ method }) => method === "thread/resume");
       const relayId = extractRelayIdFromThreadRequest(request?.params);
       const generation = extractGenerationFromThreadRequest(request?.params);
