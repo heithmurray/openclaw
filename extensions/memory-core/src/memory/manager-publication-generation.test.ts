@@ -1,6 +1,6 @@
 import path from "node:path";
 import { deserialize } from "node:v8";
-import { Worker } from "node:worker_threads";
+import { MessagePort, Worker } from "node:worker_threads";
 import {
   getSessionEntryAsync,
   upsertSessionEntry,
@@ -95,11 +95,19 @@ it("retains session entry facts across memory publication and refreshes after a 
       entry: { sessionId: "memory-publication", updatedAt: 1, label: "Before" },
     });
     expect((await getSessionEntryAsync(target))?.label).toBe("Before");
-    const messages = vi.spyOn(Worker.prototype, "postMessage");
+    const messages = vi.spyOn(MessagePort.prototype, "postMessage");
     const entryReads = () =>
-      publicationCommands(messages.mock.calls).filter(
-        (type) => type === "session.entry.readResult",
-      );
+      messages.mock.calls.filter(([message]) => {
+        return (
+          typeof message === "object" &&
+          message !== null &&
+          "input" in message &&
+          typeof message.input === "object" &&
+          message.input !== null &&
+          "kind" in message.input &&
+          message.input.kind === "session-entry-read"
+        );
+      });
     try {
       await database.writeMetadata(metadata);
       await database.replaceSource(
