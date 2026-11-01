@@ -11,6 +11,12 @@ describe("active-memory escalation", () => {
   it.each([
     "Do you remember what we decided to deploy tomorrow?",
     "What did we discuss last time?",
+    "What phrase did we use for blindly clicking Enable on Active Memory?",
+    "Which internal shortcut name did you use for this?",
+    "What label did I use for the rollout?",
+    "Which short internal project label did you use?",
+    "What user's label did we use?",
+    "Which user’s label did I use?",
     "Which database did we choose?",
     "Summarize the conversations from January",
     "¿Qué decidimos para mañana?",
@@ -69,6 +75,19 @@ describe("active-memory escalation", () => {
   });
 
   it.each([
+    "What phrase should we use for the confirmation action?",
+    "What phrase do we use for the confirmation action?",
+    "What phrase will we use for the confirmation action?",
+    "What phrase did they use for the confirmation action?",
+    "Which label did the docs use for the setting?",
+    "What label did Iñaki use?",
+    "What label did I2 use?",
+    "What label did I_name use?",
+    "What label did I山 use?",
+    "Which label did you2 use?",
+    "What label did weñ use?",
+    "What extra long internal project shortcut did we use?",
+    "What label; did we use for X?",
     "Remember to send the report",
     "How does prior authorization work?",
     "部署之前先整理聊天记录",
